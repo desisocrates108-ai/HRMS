@@ -1,0 +1,368 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import API from '@/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import {
+  Briefcase, Users, UserCheck, TrendingUp, Phone, CheckSquare,
+  Building2, ChevronRight, Clock, AlertCircle, ChevronDown, ChevronUp,
+  Image, Megaphone, Video, ExternalLink, Filter
+} from 'lucide-react';
+
+const SC = { new_lead:'#1D4ED8', qualified:'#059669', hr_interview:'#D97706', manager_interview:'#7C3AED', selected:'#0D9488', joined:'#15803D', hold:'#F97316', rejected:'#E11D48' };
+const SL = { new_lead:'New', qualified:'Qualified', hr_interview:'HR', manager_interview:'Manager', selected:'Selected', joined:'Joined', hold:'Hold', rejected:'Rejected' };
+const STAGES = ['new_lead','qualified','hr_interview','manager_interview','selected','joined','hold','rejected'];
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { API.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {}).finally(() => setLoading(false)); }, []);
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">Loading...</div>;
+  if (!stats) return <div className="text-center py-12 text-slate-500">Failed to load dashboard</div>;
+
+  const t = stats.type;
+  if (t === 'ceo') return <CEODash s={stats} u={user} />;
+  if (t === 'hr') return <HRDash s={stats} u={user} />;
+  if (t === 'manager') return <ManagerDash s={stats} u={user} />;
+  if (t === 'sr_jr_hr') return <SrJrHRDash s={stats} u={user} />;
+  if (t === 'fde') return <FDEDash s={stats} u={user} />;
+  if (t === 'designer') return <DesignerDash s={stats} u={user} />;
+  if (t === 'mktg_coord') return <MktgCoordDash s={stats} u={user} />;
+  return <GenericExecDash s={stats} u={user} />;
+}
+
+function KPI({ icon: Icon, label, value, color, to }) {
+  const nav = useNavigate();
+  const clickable = !!to;
+  return (
+    <Card
+      onClick={clickable ? () => nav(to) : undefined}
+      className={`border-slate-200 shadow-none ${clickable ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-blue-300 transition-all duration-200 active:scale-[0.98]' : ''}`}
+      data-testid={clickable ? `kpi-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3">
+          <div className={color}><Icon className="w-5 h-5" /></div>
+          <div><p className="text-xl font-bold text-slate-900">{value ?? 0}</p><p className="text-xs text-slate-500">{label}</p></div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PipelineRow({ pipeline, isTechnician }) {
+  const nav = useNavigate();
+  const goStage = (stage) => {
+    const params = new URLSearchParams({ stage });
+    if (isTechnician !== undefined) params.set('is_technician', String(isTechnician));
+    nav(`/leads?${params.toString()}`);
+  };
+  return (
+    <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+      {STAGES.map(s => (
+        <button
+          key={s}
+          onClick={() => goStage(s)}
+          className="p-2 rounded-lg border border-slate-200 bg-white text-center hover:border-blue-300 hover:shadow-sm transition-all duration-200 active:scale-[0.97]"
+          data-testid={`pipeline-stage-${s}`}
+        >
+          <div className="text-[10px] font-semibold text-slate-500 uppercase">{SL[s]?.split(' ')[0]}</div>
+          <div className="text-lg font-bold" style={{ color: SC[s] }}>{pipeline?.[s] || 0}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LeadTable({ leads, showBranch }) {
+  const nav = useNavigate();
+  if (!leads?.length) return <p className="text-sm text-slate-500 py-4 text-center">No leads</p>;
+  return (<div className="space-y-1.5">{leads.slice(0,20).map(l => (
+    <div key={l.id} className="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-blue-300 cursor-pointer transition-all" onClick={() => nav(`/leads/${l.id}`)} data-testid={`lead-row-${l.id}`}>
+      <div className="flex items-center justify-between"><p className="font-medium text-sm text-slate-900">{l.name}</p><Badge style={{backgroundColor:`${SC[l.current_stage]}15`,color:SC[l.current_stage]}} className="border-0 text-xs">{l.stage_label}</Badge></div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 mt-1">
+        {l.experience && <span>Exp: {l.experience}y</span>}{l.job_role && <span>Role: {l.job_role}</span>}{l.salary_expectation && <span>Sal: {l.salary_expectation}</span>}
+        <span>By: {l.assigned_to_name}</span>{l.source && <span>Src: {l.source.replace('_',' ')}</span>}{l.interview_date && <span>Int: {l.interview_date}</span>}
+        {showBranch && l.branch_name && <span className="flex items-center gap-0.5"><Building2 className="w-3 h-3" />{l.branch_name}</span>}
+      </div>
+    </div>))}</div>);
+}
+
+function HiringSection({ section, showBranch, isTechnician }) {
+  if (!section) return null;
+  return (<>
+    <PipelineRow pipeline={section.pipeline} isTechnician={isTechnician} />
+    <Tabs defaultValue="meta_ads"><TabsList className="grid grid-cols-3 w-full md:w-96 h-auto"><TabsTrigger value="meta_ads" className="text-xs py-1.5">Meta Ads ({section.leads_by_source?.meta_ads?.length||0})</TabsTrigger><TabsTrigger value="job_portal" className="text-xs py-1.5">Job Portals ({section.leads_by_source?.job_portal?.length||0})</TabsTrigger><TabsTrigger value="manual" className="text-xs py-1.5">Manual ({section.leads_by_source?.manual?.length||0})</TabsTrigger></TabsList>
+    {['meta_ads','job_portal','manual'].map(src => (<TabsContent key={src} value={src} className="mt-2"><LeadTable leads={section.leads_by_source?.[src]} showBranch={showBranch} /></TabsContent>))}</Tabs>
+  </>);
+}
+
+function LeadSourceCards({ data }) {
+  const nav = useNavigate();
+  if (!data) return null;
+  const sources = [
+    { key: 'meta_ads', label: 'Meta Leads', color: 'bg-blue-50 text-blue-700', icon: Users },
+    { key: 'job_portal', label: 'Job Portal', color: 'bg-emerald-50 text-emerald-700', icon: Briefcase },
+    { key: 'manual', label: 'Manual', color: 'bg-amber-50 text-amber-700', icon: Users },
+  ];
+  const counts = { meta_ads: 0, job_portal: 0, manual: 0 };
+  ['technician_hiring', 'ho_hiring'].forEach((k) => {
+    const sec = data[k] || {};
+    const by = sec.leads_by_source || {};
+    counts.meta_ads += (by.meta_ads || []).length;
+    counts.job_portal += (by.job_portal || []).length;
+    counts.manual += (by.manual || []).length;
+  });
+  const total = counts.meta_ads + counts.job_portal + counts.manual;
+
+  return (
+    <Card className="border-slate-200 shadow-none" data-testid="source-cards">
+      <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Leads by Source</CardTitle></CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {sources.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => nav(`/leads?source=${s.key}`)}
+              className={`flex items-center gap-2 px-3 py-3 rounded-md ${s.color} hover:-translate-y-0.5 hover:shadow-sm transition-all text-left`}
+              data-testid={`source-card-${s.key}`}
+            >
+              <s.icon className="w-4 h-4 opacity-70" />
+              <div>
+                <p className="text-xs opacity-80">{s.label}</p>
+                <p className="text-lg font-semibold">{counts[s.key]}</p>
+              </div>
+            </button>
+          ))}
+          <button
+            onClick={() => nav('/leads')}
+            className="flex items-center gap-2 px-3 py-3 rounded-md bg-violet-50 text-violet-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left"
+            data-testid="source-card-all"
+          >
+            <TrendingUp className="w-4 h-4 opacity-70" />
+            <div>
+              <p className="text-xs opacity-80">All Leads</p>
+              <p className="text-lg font-semibold">{total}</p>
+            </div>
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FranchisesCard({ data }) {
+  const nav = useNavigate();
+  if (!data) return null;
+  const all = [...(data.upcoming || []), ...(data.active || [])];
+  if (!all.length) return null;
+  return (
+    <Card className="border-slate-200 shadow-none" data-testid="franchises-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-medium flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-blue-700" />
+          <button onClick={() => nav('/branches')} className="hover:underline" data-testid="franchises-title-link">Franchises</button>
+          <Badge variant="outline" className="ml-1 text-xs">{data.total_upcoming} upcoming</Badge>
+          <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-200">{data.total_active} active</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="upcoming">
+          <TabsList className="grid grid-cols-2 w-full md:w-72 h-auto">
+            <TabsTrigger value="upcoming" className="text-xs py-1.5" data-testid="franchise-upcoming-tab">Upcoming ({data.total_upcoming})</TabsTrigger>
+            <TabsTrigger value="active" className="text-xs py-1.5" data-testid="franchise-active-tab">Active ({data.total_active})</TabsTrigger>
+          </TabsList>
+          {['upcoming', 'active'].map((kind) => (
+            <TabsContent key={kind} value={kind} className="mt-2">
+              {(data[kind] || []).length === 0 ? (
+                <p className="text-sm text-slate-500 py-3 text-center">No {kind} franchises</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {data[kind].map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => nav('/branches')}
+                      className="p-2.5 rounded-lg border border-slate-200 bg-white text-left hover:border-blue-300 hover:shadow-sm transition-all duration-200 active:scale-[0.99]"
+                      data-testid={`dash-franchise-${b.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900 truncate">{b.name}</p>
+                        <Badge className={`${kind === 'upcoming' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'} border-0 text-[10px] flex-shrink-0`}>{kind}</Badge>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{b.city}, {b.area}</p>
+                      <div className="flex gap-3 mt-1.5 text-xs">
+                        <span className="text-blue-700"><strong>{b.open_jobs}</strong> jobs</span>
+                        <span className="text-emerald-700"><strong>{b.employees}</strong> staff</span>
+                        {kind === 'upcoming' && b.tentative_opening_date && (
+                          <span className="text-slate-500">Opens {b.tentative_opening_date}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeetingButtons() {
+  const [url, setUrl] = useState('');
+  const start = async () => { try { const {data} = await API.post('/meetings/create'); setUrl(data.meeting_url); window.open(data.meeting_url, '_blank'); } catch {} };
+  const [meetings, setMeetings] = useState([]);
+  useEffect(() => { API.get('/meetings/recent').then(r => setMeetings(r.data)).catch(() => {}); }, []);
+  return (<Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium flex items-center gap-2"><Video className="w-4 h-4 text-blue-700" />Meetings</CardTitle></CardHeader><CardContent>
+    <div className="flex gap-2 mb-3"><Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={start} data-testid="start-meeting-btn"><Video className="w-3 h-3 mr-1" />Start Meeting</Button>
+    {meetings.length > 0 && <Button size="sm" variant="outline" onClick={() => window.open(meetings[0].meeting_url, '_blank')} data-testid="join-meeting-btn"><ExternalLink className="w-3 h-3 mr-1" />Join Last Meeting</Button>}</div>
+    {meetings.slice(0,3).map(m => (<div key={m.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50"><span className="text-slate-700">{m.created_by_name}</span><a href={m.meeting_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">{new Date(m.created_at).toLocaleString()}</a></div>))}
+  </CardContent></Card>);
+}
+
+// ===================== CEO =====================
+function CEODash({ s }) {
+  const [exp, setExp] = useState(null);
+  const tm = s.top_metrics||{};
+  return (<div className="space-y-5" data-testid="ceo-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">CEO Dashboard</h1>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /></div>
+    {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => window.location.href = '/jobs'}><CardContent className="p-3"><div className="flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4 text-red-600" /><span className="text-sm font-semibold text-red-800">Overdue Jobs ({s.overdue_jobs.length})</span></div>{s.overdue_jobs.map(j => <p key={j.id} className="text-xs text-red-700">{j.role} - {j.location} (deadline: {j.deadline})</p>)}</CardContent></Card>}
+    <LeadSourceCards data={s} />
+    <Tabs defaultValue="technician"><TabsList className="grid grid-cols-2 w-full md:w-96"><TabsTrigger value="technician" data-testid="tab-technician">Franchise (FDE)</TabsTrigger><TabsTrigger value="ho" data-testid="tab-ho">Head Office (HR)</TabsTrigger></TabsList>
+      <TabsContent value="technician" className="mt-3 space-y-3"><h3 className="text-sm font-semibold text-slate-700">Jobs ({s.technician_hiring?.jobs?.length||0})</h3>{s.technician_hiring?.jobs?.slice(0,4).map(j => <Badge key={j.id} variant="outline" className="mr-1 mb-1 cursor-pointer hover:border-blue-400 hover:bg-blue-50" onClick={() => window.location.href='/jobs'} data-testid={`job-badge-${j.id}`}>{j.role} - {j.location}</Badge>)}<HiringSection section={s.technician_hiring} showBranch isTechnician={true} /></TabsContent>
+      <TabsContent value="ho" className="mt-3 space-y-3"><h3 className="text-sm font-semibold text-slate-700">Jobs ({s.ho_hiring?.jobs?.length||0})</h3>{s.ho_hiring?.jobs?.slice(0,4).map(j => <Badge key={j.id} variant="outline" className="mr-1 mb-1 cursor-pointer hover:border-blue-400 hover:bg-blue-50" onClick={() => window.location.href='/jobs'} data-testid={`job-badge-${j.id}`}>{j.role} - {j.location}</Badge>)}<HiringSection section={s.ho_hiring} isTechnician={false} /></TabsContent>
+    </Tabs>
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium flex items-center gap-2"><Phone className="w-4 h-4 text-blue-700" />Call Tracking</CardTitle></CardHeader><CardContent>{!s.call_tracking?.length ? <p className="text-sm text-slate-500">No calls</p> : <div className="space-y-2">{s.call_tracking.map(e => (
+      <div key={e.id} className="border border-slate-200 rounded-lg overflow-hidden"><div className="flex items-center justify-between p-2 cursor-pointer hover:bg-slate-50" onClick={() => setExp(exp===e.id?null:e.id)} data-testid={`exec-calls-${e.id}`}><div><p className="text-sm font-medium text-slate-900">{e.name}</p><p className="text-xs text-slate-500">{e.role}</p></div><div className="flex items-center gap-2"><Badge variant="outline" className="text-xs">{e.total_calls} calls</Badge>{exp===e.id?<ChevronUp className="w-3 h-3" />:<ChevronDown className="w-3 h-3" />}</div></div>
+      {exp===e.id && <div className="border-t bg-slate-50 p-2 space-y-1">{e.leads_called?.map((lc,i) => <div key={i} className="flex justify-between text-xs px-1"><span className="text-slate-700">{lc.lead_name}</span><span className="flex gap-2"><Badge variant="secondary" className="text-[10px]">{lc.source?.replace('_',' ')}</Badge><span className="text-slate-500">{lc.call_count}x</span></span></div>)}</div>}
+    </div>))}</div>}</CardContent></Card>
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== HR =====================
+function HRDash({ s }) {
+  const nav = useNavigate();
+  const tm = s.top_metrics||{};
+  return (<div className="space-y-5" data-testid="hr-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">HR Dashboard</h1>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /><KPI icon={Phone} label="Today Calls" value={tm.calls_today} color="text-blue-600" to="/leads" /></div>
+    <div className="flex gap-3 flex-wrap"><Button size="sm" variant="outline" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-3 h-3 mr-1" />Post Panel ({s.pending_reviews||0} to review)</Button><Button size="sm" variant="outline" onClick={() => nav('/leads')}>All Leads</Button><Button size="sm" variant="outline" onClick={() => nav('/jobs')}>All Jobs ({s.all_jobs?.length||0})</Button></div>
+    {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => nav('/jobs')}><CardContent className="p-3"><AlertCircle className="w-4 h-4 text-red-600 inline mr-1" /><span className="text-sm font-semibold text-red-800">Overdue: </span>{s.overdue_jobs.map(j => <Badge key={j.id} variant="destructive" className="text-xs mr-1">{j.role}</Badge>)}</CardContent></Card>}
+    <PipelineRow pipeline={s.overall_pipeline} />
+    <LeadSourceCards data={s} />
+    <Tabs defaultValue="technician"><TabsList className="grid grid-cols-2 w-full md:w-72"><TabsTrigger value="technician">Franchise Leads ({s.technician_hiring?.total_leads||0})</TabsTrigger><TabsTrigger value="ho">HO Leads ({s.ho_hiring?.total_leads||0})</TabsTrigger></TabsList>
+      <TabsContent value="technician" className="mt-2"><HiringSection section={s.technician_hiring} showBranch isTechnician={true} /></TabsContent>
+      <TabsContent value="ho" className="mt-2"><HiringSection section={s.ho_hiring} isTechnician={false} /></TabsContent>
+    </Tabs>
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== MANAGER =====================
+function ManagerDash({ s }) {
+  const nav = useNavigate();
+  const tm = s.top_metrics||{};
+  return (<div className="space-y-5" data-testid="manager-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">{s.department} Manager</h1>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3"><KPI icon={Briefcase} label="Jobs Created" value={tm.jobs_created} color="text-blue-700" to="/jobs" /><KPI icon={TrendingUp} label="Active Hirings" value={tm.active_hirings} color="text-emerald-600" to="/jobs" /><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-violet-600" to="/leads" /><KPI icon={Users} label="New Leads" value={tm.new_leads} color="text-amber-600" to="/leads?stage=new_lead" /><KPI icon={UserCheck} label="Hires" value={tm.total_hires} color="text-indigo-600" to="/employees" /></div>
+    {s.alerts?.length > 0 && <Card className="border-amber-200 bg-amber-50/50 shadow-none"><CardContent className="p-3">{s.alerts.map((a,i) => <div key={i} className="flex items-center gap-2 text-sm py-0.5"><AlertCircle className={`w-3 h-3 ${a.type==='overdue'?'text-red-600':'text-amber-600'}`} /><span className={a.type==='overdue'?'text-red-700':'text-amber-700'}>{a.message}</span></div>)}</CardContent></Card>}
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-base font-medium">My Job Openings</CardTitle><Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => nav('/jobs')}>Create Job</Button></div></CardHeader><CardContent>
+      {!s.jobs?.length ? <p className="text-sm text-slate-500">No jobs created yet</p> : <div className="space-y-2">{s.jobs.map(j => (
+        <div key={j.id} onClick={() => nav('/jobs')} className="flex items-center justify-between p-2 rounded border border-slate-200 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all" data-testid={`mgr-job-${j.id}`}><div><p className="text-sm font-medium text-slate-900">{j.role}</p><p className="text-xs text-slate-500">{j.location} | {j.department||j.type}</p></div><div className="flex items-center gap-2"><Badge variant={j.status==='open'?'default':'secondary'} className={j.status==='open'?'bg-emerald-100 text-emerald-700 border-0':''}>{j.status}</Badge><span className="text-xs text-slate-500">{j.leads_count} leads</span><span className="text-xs text-slate-400">{j.assigned_hr}</span></div></div>
+      ))}</div>}</CardContent></Card>
+    <PipelineRow pipeline={s.pipeline} />
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">Lead Insights</CardTitle></CardHeader><CardContent><div className="grid grid-cols-4 gap-3 text-center">{[['New',s.lead_insights?.new,'text-blue-700','new_lead'],['Qualified',s.lead_insights?.qualified,'text-emerald-600','qualified'],['Interviewed',s.lead_insights?.interviewed,'text-amber-600','hr_interview'],['Hired',s.lead_insights?.hired,'text-violet-600','joined']].map(([l,v,c,stage]) => <button key={l} onClick={() => nav(`/leads?stage=${stage}`)} className="rounded p-1 hover:bg-slate-50 transition-colors" data-testid={`insight-${l.toLowerCase()}`}><p className={`text-xl font-bold ${c}`}>{v||0}</p><p className="text-xs text-slate-500">{l}</p></button>)}</div></CardContent></Card>
+    {s.ownership && Object.keys(s.ownership).length > 0 && <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">Lead Ownership</CardTitle></CardHeader><CardContent><div className="space-y-1">{Object.entries(s.ownership).map(([name,cnt]) => <div key={name} className="flex justify-between text-sm py-1 border-b border-slate-50"><span className="text-slate-700">{name}</span><Badge variant="outline" className="text-xs">{cnt} leads</Badge></div>)}</div></CardContent></Card>}
+    <LeadTable leads={s.leads} />
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== SR/JR HR =====================
+function SrJrHRDash({ s, u }) {
+  const nav = useNavigate();
+  return (<div className="space-y-5" data-testid="srhr-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">{u?.role} Dashboard</h1>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="My Leads" value={s.my_leads_count} color="text-blue-700" to="/leads" /><KPI icon={Phone} label="Calls Today" value={s.calls_today} color="text-emerald-600" to="/leads" /><KPI icon={Phone} label="Total Calls" value={s.total_calls} color="text-amber-600" to="/leads" /><KPI icon={Briefcase} label="Open Jobs" value={s.all_jobs?.length} color="text-violet-600" to="/jobs" /></div>
+    <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-3 h-3 mr-1" />Post Panel</Button><Button size="sm" variant="outline" onClick={() => nav('/leads')}>All Leads</Button></div>
+    <PipelineRow pipeline={s.my_pipeline} />
+    <Tabs defaultValue="meta_ads"><TabsList className="grid grid-cols-3 w-full md:w-96 h-auto"><TabsTrigger value="meta_ads" className="text-xs">Meta Ads ({s.leads_by_source?.meta_ads?.length||0})</TabsTrigger><TabsTrigger value="job_portal" className="text-xs">Portals ({s.leads_by_source?.job_portal?.length||0})</TabsTrigger><TabsTrigger value="manual" className="text-xs">Manual ({s.leads_by_source?.manual?.length||0})</TabsTrigger></TabsList>
+    {['meta_ads','job_portal','manual'].map(src => <TabsContent key={src} value={src} className="mt-2"><LeadTable leads={s.leads_by_source?.[src]} /></TabsContent>)}</Tabs>
+    {s.recent_calls?.length > 0 && <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">Recent Calls</CardTitle></CardHeader><CardContent><div className="space-y-1">{s.recent_calls.map(c => <div key={c.id} className="p-2 rounded border border-slate-100 text-sm"><p className="text-slate-700">{c.notes}</p><p className="text-xs text-slate-400">{new Date(c.call_date).toLocaleString()}</p></div>)}</div></CardContent></Card>}
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== FRANCHISE EXECUTIVE =====================
+function FDEDash({ s, u }) {
+  const nav = useNavigate();
+  return (<div className="space-y-5" data-testid="fde-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">Franchise Executive</h1>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="My Leads" value={s.my_leads_count} color="text-blue-700" to="/leads" /><KPI icon={Phone} label="Calls Today" value={s.calls_today} color="text-emerald-600" to="/leads" /><KPI icon={Phone} label="Total Calls" value={s.total_calls} color="text-amber-600" to="/leads" /><KPI icon={Briefcase} label="Tech Jobs" value={s.jobs?.length} color="text-violet-600" to="/jobs" /></div>
+    {s.jobs?.length > 0 && <div className="flex flex-wrap gap-1">{s.jobs.slice(0,6).map(j => <Badge key={j.id} variant="outline" className="cursor-pointer hover:border-blue-400 hover:bg-blue-50" onClick={() => nav('/jobs')} data-testid={`fde-job-${j.id}`}>{j.role} - {j.location}</Badge>)}</div>}
+    <PipelineRow pipeline={s.my_pipeline} />
+    <Tabs defaultValue="meta_ads"><TabsList className="grid grid-cols-3 w-full md:w-96 h-auto"><TabsTrigger value="meta_ads" className="text-xs">Meta Ads ({s.leads_by_source?.meta_ads?.length||0})</TabsTrigger><TabsTrigger value="job_portal" className="text-xs">Portals ({s.leads_by_source?.job_portal?.length||0})</TabsTrigger><TabsTrigger value="manual" className="text-xs">Manual ({s.leads_by_source?.manual?.length||0})</TabsTrigger></TabsList>
+    {['meta_ads','job_portal','manual'].map(src => <TabsContent key={src} value={src} className="mt-2"><LeadTable leads={s.leads_by_source?.[src]} showBranch /></TabsContent>)}</Tabs>
+    {s.recent_calls?.length > 0 && <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">Recent Calls</CardTitle></CardHeader><CardContent><div className="space-y-1">{s.recent_calls.map(c => <div key={c.id} className="p-2 rounded border border-slate-100 text-sm"><p className="text-slate-700">{c.notes}</p><p className="text-xs text-slate-400">{new Date(c.call_date).toLocaleString()}</p></div>)}</div></CardContent></Card>}
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== GRAPHIC DESIGNER =====================
+function DesignerDash({ s }) {
+  const nav = useNavigate();
+  return (<div className="space-y-5" data-testid="designer-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">Design Dashboard</h1>
+    <div className="grid grid-cols-2 gap-3"><KPI icon={Image} label="Pending Requests" value={s.total_pending} color="text-amber-600" to="/posts" /><KPI icon={CheckSquare} label="Completed" value={s.total_completed} color="text-emerald-600" to="/posts" /></div>
+    <Button className="bg-blue-700 hover:bg-blue-800" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-4 h-4 mr-1" />Open Post Panel</Button>
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium text-amber-700">Pending Requests ({s.total_pending})</CardTitle></CardHeader><CardContent>{!s.pending_requests?.length ? <p className="text-sm text-slate-500">No pending requests</p> : <div className="space-y-2">{s.pending_requests.map(r => (
+      <div key={r.id} onClick={() => nav('/posts')} className="p-3 rounded-lg border border-amber-200 bg-amber-50/30 cursor-pointer hover:bg-amber-50/50 transition-colors" data-testid={`design-pending-${r.id}`}><p className="font-medium text-sm text-slate-900">{r.role} - {r.job_info}</p><p className="text-xs text-slate-500 mt-1">Requested by: {r.requested_by_name}</p><p className="text-xs text-slate-400">{new Date(r.created_at).toLocaleString()}</p></div>
+    ))}</div>}</CardContent></Card>
+    {s.my_posts?.length > 0 && <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">My Uploads</CardTitle></CardHeader><CardContent><div className="space-y-2">{s.my_posts.map(p => (
+      <div key={p.id} onClick={() => nav('/posts')} className="flex items-center justify-between p-2 rounded border border-slate-200 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all" data-testid={`design-upload-${p.id}`}><div><p className="text-sm font-medium text-slate-900">{p.role}</p><p className="text-xs text-slate-500">{p.file_name}</p></div><Badge className={p.review_status==='approved'?'bg-emerald-100 text-emerald-700 border-0':'bg-amber-100 text-amber-700 border-0'}>{p.review_status}</Badge></div>
+    ))}</div></CardContent></Card>}
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== MARKETING COORDINATOR =====================
+function MktgCoordDash({ s }) {
+  const nav = useNavigate();
+  return (<div className="space-y-5" data-testid="mktg-coord-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">Marketing Dashboard</h1>
+    <div className="grid grid-cols-3 gap-3"><KPI icon={Clock} label="Pending" value={s.pending_count} color="text-amber-600" to="/campaigns" /><KPI icon={Megaphone} label="Running" value={s.running_count} color="text-blue-700" to="/campaigns" /><KPI icon={CheckSquare} label="Completed" value={s.completed_count} color="text-emerald-600" to="/campaigns" /></div>
+    <Button className="bg-blue-700 hover:bg-blue-800" onClick={() => nav('/campaigns')} data-testid="go-campaigns"><Megaphone className="w-4 h-4 mr-1" />View All Campaigns</Button>
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">My Campaigns</CardTitle></CardHeader><CardContent>{!s.campaigns?.length ? <p className="text-sm text-slate-500">No campaigns</p> : <div className="space-y-2">{s.campaigns.map(c => (
+      <div key={c.id} onClick={() => nav('/campaigns')} className="flex items-center justify-between p-3 rounded border border-slate-200 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all" data-testid={`mktg-camp-${c.id}`}><div><p className="text-sm font-medium text-slate-900">{c.role} - {c.location}</p><p className="text-xs text-slate-500">Platform: {c.platform?.replace('_',' ')}</p></div><Badge className={c.status==='running'?'bg-blue-100 text-blue-700 border-0':c.status==='completed'?'bg-emerald-100 text-emerald-700 border-0':'bg-amber-100 text-amber-700 border-0'}>{c.status}</Badge></div>
+    ))}</div>}</CardContent></Card>
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}
+
+// ===================== GENERIC EXECUTOR =====================
+function GenericExecDash({ s, u }) {
+  const nav = useNavigate();
+  return (<div className="space-y-5" data-testid="executor-dashboard">
+    <h1 className="text-2xl font-heading font-semibold text-slate-900">Welcome, {u?.name?.split(' ')[0]}</h1>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="My Leads" value={s.my_leads_count} color="text-blue-700" to="/leads" /><KPI icon={Phone} label="Calls Today" value={s.calls_today} color="text-emerald-600" to="/leads" /><KPI icon={CheckSquare} label="Pending Tasks" value={s.pending_tasks_count} color="text-amber-600" to="/tasks" /><KPI icon={Briefcase} label="Pipeline" value={Object.values(s.my_pipeline||{}).reduce((a,b)=>a+b,0)} color="text-violet-600" to="/leads" /></div>
+    <PipelineRow pipeline={s.my_pipeline} />
+    <LeadTable leads={s.my_leads} />
+    <FranchisesCard data={s.franchises} />
+    <MeetingButtons />
+  </div>);
+}

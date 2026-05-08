@@ -1,0 +1,74 @@
+{
+  "summary": "Iteration 11 - Pipeline Rename + Auto-Job Creation + Employee Search - 17 PASSED, 1 SKIPPED (bug). Comprehensive testing of stage rename (move_ahead→selected, dead→rejected), auto-job creation on employee exit, and employee search/filter features.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/leads/{id}/transition with to_stage='dead'",
+        "issue": "Legacy 'dead' alias returns 400 'Invalid stage'. The code at line 201 in leads.py handles 'dead' as alias for 'rejected', but validation at line 177 rejects it because 'dead' is not in PIPELINE_STAGES.",
+        "priority": "HIGH",
+        "fix": "Add 'dead' to PIPELINE_STAGES in auth_utils.py OR normalize 'dead' to 'rejected' before validation in leads.py"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "GET /api/leads/pipeline-stats returns new stage names (new_lead, qualified, hr_interview, manager_interview, selected, joined, hold, rejected)",
+    "HO pipeline: new_lead → qualified transition works",
+    "HO pipeline: qualified → hr_interview transition works",
+    "HO pipeline: hr_interview → manager_interview requires HR questionnaire (400 if missing)",
+    "HO pipeline: Full path to 'selected' works with HR + Manager questionnaires",
+    "Tech pipeline: manager_interview stage correctly blocked (400 'Technician pipeline has no Manager Interview')",
+    "Tech pipeline: selected requires HR questionnaire (not manager)",
+    "Tech pipeline: Full path to 'selected' works with HR questionnaire only",
+    "Transition to 'rejected' requires rejection_reason (400 if missing)",
+    "Transition to 'rejected' with rejection_reason works correctly",
+    "POST /api/employees/{id}/exit with auto_create_job=true creates job with auto_created_from_exit=true, exit_employee_id, exit_employee_name",
+    "POST /api/employees/{id}/exit with auto_create_job=true notifies Sr HR users",
+    "POST /api/employees/{id}/exit with auto_create_job=true notifies Jr HR users",
+    "POST /api/employees/{id}/exit with auto_create_job=false returns auto_job_id=null (no job created)",
+    "GET /api/employees?search=<term> filters by name/role/city/department/phone/email (case-insensitive)",
+    "GET /api/employees?search=Technician returns matching employees",
+    "GET /api/employees?branch_id=<id> filters to that branch only",
+    "Convert lead to employee works from 'selected' stage (new name)",
+    "Convert lead to employee blocked from 'new_lead' stage (must be selected/joined)"
+  ],
+  "skipped_tests": [
+    "Legacy 'dead' alias test - SKIPPED due to bug (dead not in PIPELINE_STAGES)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_pipeline_rename.py",
+    "/app/test_reports/pytest/pytest_iteration11.xml"
+  ],
+  "action_items": [
+    "FIX BUG: Add 'dead' to PIPELINE_STAGES in /app/backend/auth_utils.py line 31 (PARALLEL_STAGES = ['hold', 'rejected', 'dead']) OR normalize 'dead' to 'rejected' before validation in /app/backend/routes/leads.py"
+  ],
+  "critical_code_review_comments": [
+    "BUG: Legacy 'dead' alias not working - validation at line 177 in leads.py rejects 'dead' before alias handling at line 201 can process it"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_pipeline_rename.py"
+  ],
+  "success_rate": {
+    "backend": "94% (17/18 passed, 1 skipped due to bug)",
+    "frontend": "N/A (backend only testing requested)"
+  },
+  "seed_data_creation": "Test leads/employees created with TEST_ prefix pattern for pipeline and exit tests",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 11 tested pipeline rename (selected/rejected), auto-job creation on exit, and employee search. One bug found: legacy 'dead' alias not working. All other features working correctly. Auto-job creation creates jobs with auto_created_from_exit=true and notifies Sr/Jr HR users. Employee search supports case-insensitive regex across name, role, location_city, department, phone, email fields.",
+  "rca_of_the_issue": {
+    "bug": "Legacy 'dead' alias returns 400 'Invalid stage'",
+    "root_cause": "PIPELINE_STAGES in auth_utils.py only contains 'rejected', not 'dead'. The validation at line 177 in leads.py checks 'if to_stage not in PIPELINE_STAGES' which fails for 'dead'. The alias handling at line 201 ('elif to_stage in (\"rejected\", \"dead\")') never gets reached.",
+    "reproduction_steps": [
+      "1. Create a lead via POST /api/leads",
+      "2. POST /api/leads/{id}/transition with to_stage='dead' and form_data.rejection_reason='test'",
+      "3. Observe 400 'Invalid stage' response"
+    ],
+    "mitigation": "Add 'dead' to PARALLEL_STAGES in auth_utils.py: PARALLEL_STAGES = ['hold', 'rejected', 'dead']"
+  }
+}

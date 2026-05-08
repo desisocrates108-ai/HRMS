@@ -1,0 +1,91 @@
+{
+  "theme": "Light",
+  "archetype": "4 - Swiss & High-Contrast",
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "IBM Plex Sans, sans-serif",
+    "hierarchy": {
+      "h1": "text-3xl md:text-4xl font-semibold tracking-tight",
+      "h2": "text-2xl md:text-3xl font-medium tracking-tight",
+      "h3": "text-xl md:text-2xl font-medium",
+      "h4": "text-lg md:text-xl font-medium",
+      "body": "text-sm md:text-base leading-relaxed",
+      "label": "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"
+    },
+    "pairing_strategy": "Outfit provides a modern, geometric tech feel. IBM Plex Sans provides immense clarity for dense data and forms on mobile devices."
+  },
+  "color_palette": {
+    "primary": "#1D4ED8",
+    "primary_hover": "#1E40AF",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569",
+    "status": {
+      "success": "#059669",
+      "warning": "#D97706",
+      "danger": "#E11D48",
+      "nurture": "#4F46E5"
+    },
+    "rules": "Avoid gradients. Use solid high-contrast colors. Do not use generic grey, use slate which has a subtle blue tint."
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-4 md:p-8",
+    "card_padding": "p-4 md:p-6",
+    "gap_standard": "gap-4 md:gap-6",
+    "grid_strategy": "MODE B (Control Room): Mobile-first grid-cols-1. Desktop up to grid-cols-4. Every pixel utilized. Overlapping not required for dashboards.",
+    "alignment": "Strict left-alignment for forms and reading content. Center alignment is banned unless for empty states."
+  },
+  "components": {
+    "buttons": "Action-oriented. Use primary brand color for main CTAs. Full width on mobile. Must have active:scale-[0.98] transition.",
+    "cards": "Flat design. No default shadows. bg-white with 1px border-slate-200. On hover: -translate-y-1 shadow-md border-slate-300.",
+    "kanban_and_pipeline": "DO NOT use drag-and-drop on mobile. Present pipelines as a list or tap-to-switch tabs. Use bold 'Move to Next Stage' buttons inside detail views. Dropdowns over typing.",
+    "forms": "Heavily customized Shadcn UI. Inputs must have strict focus states (focus:ring-2 focus:ring-blue-600) and high contrast for outdoor legibility.",
+    "navigation": "Header must have a solid background (bg-white border-b). No glassmorphism as it causes data refraction for field workers.",
+    "icons": "Use lucide-react. Stroke width 2 on mobile for better tap targeting and visibility."
+  },
+  "motion": {
+    "transitions": "transition-all duration-200 ease-in-out",
+    "micro_interactions": "Hover states on cards (slight lift), active states on buttons (scale down). No complex parallax."
+  },
+  "image_urls": [
+    {
+      "category": "user_avatars",
+      "urls": [
+        "https://images.unsplash.com/photo-1758613654360-45f1ff78c0cf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYwODExMDJ8MA&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1762522926157-bcc04bf0b10a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYwODExMDJ8MA&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/flagged/photo-1573582677725-863b570e3c00?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHw0fHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYwODExMDJ8MA&ixlib=rb-4.1.0&q=85"
+      ],
+      "description": "Professional headshots for executive, manager, and HR roles."
+    },
+    {
+      "category": "technician_avatars",
+      "urls": [
+        "https://images.pexels.com/photos/7807035/pexels-photo-7807035.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "https://images.pexels.com/photos/8985967/pexels-photo-8985967.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      ],
+      "description": "Portraits for mechanics and field technicians."
+    },
+    {
+      "category": "brand_logo",
+      "urls": [
+        "https://images.unsplash.com/photo-1773766487673-8553f2a25d5c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwxfHxhdXRvbW90aXZlJTIwc2VydmljZSUyMGxvZ298ZW58MHx8fHwxNzc2MDgxMDk4fDA&ixlib=rb-4.1.0&q=85"
+      ],
+      "description": "Fallback brand logo for Servall if text-based logo is not sufficient."
+    }
+  ],
+  "accessibility_and_testing": {
+    "test_ids": "All interactive elements MUST have a data-testid attribute (e.g., data-testid='submit-lead-button'). Use kebab-case.",
+    "contrast": "Ensure minimum 4.5:1 contrast ratio. Use slate-900 for primary text on white backgrounds."
+  },
+  "instructions_to_main_agent": [
+    "Design MUST be strictly mobile-first. Target non-technical staff and field teams.",
+    "Use large tap targets (minimum 44x44px for buttons).",
+    "Replace Kanban drag-and-drop with a vertical list layout on mobile. Use prominent action buttons (e.g., 'Move to Next Stage') in a bottom fixed sheet or modal instead of dragging.",
+    "Dashboards must be clutter-free. Use 2-column or 1-column layouts on mobile for KPIs.",
+    "Implement Role-Based routing (CEO, Manager, Executive, HR) with simple filtering.",
+    "Use Shadcn UI primarily. Dropdowns are preferred over typing inputs.",
+    "Avoid glassmorphism. Stick to solid colors (bg-white) and high contrast for legibility in outdoor environments."
+  ]
+}
