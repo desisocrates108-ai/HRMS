@@ -1,4 +1,4 @@
-# Servall Hiring OS - PRD (Updated May 1, 2026)
+# Servall Hiring OS - PRD (Updated Feb 13, 2026)
 
 ## Architecture
 - Backend: FastAPI, Frontend: React + Shadcn UI, DB: MongoDB, AI: GPT-5.2, Auth: JWT Bearer
@@ -7,74 +7,68 @@
 
 ## Role Hierarchy
 - SUPER (full access): CEO, HR
-- MANAGER: Marketing/Operations/Sales/Accounts Manager
+- MANAGER: Marketing/Operations/Sales/Accounts Manager (+ Franchise Manager allowed for interviews)
 - EXECUTOR: Sr HR, Jr HR, Marketing Coordinator, Graphic Designer, Franchise Executive
 
-## Pipeline Model (renamed May 2026)
+## Pipeline Model (Feb 2026 restructure — three_months stage added)
+
 ### Head Office
-`new_lead → qualified → hr_interview → manager_interview → selected → joined`
-Parallel states: `hold` (resumable), `rejected` (terminal, triggers WhatsApp feedback).
+`new_lead → qualified → hr_interview → manager_interview → selected → three_months → joined`
 
-### Technician / Branch (shown as "Franchise" in dashboards)
-`new_lead → qualified → hr_interview → selected → joined`
-Parallel states: `hold`, `rejected`.
+### Franchise (Technician)
+`new_lead → qualified → hr_interview → selected → three_months → joined`
 
-Legacy aliases: `move_ahead` → `selected`, `dead` → `rejected` (backward compat preserved).
+Parallel states: `hold` (resumable, requires hold_reason), `rejected` (terminal, triggers WhatsApp feedback).
 
-### Interview Questionnaires
-- HR Round (10 criteria), Manager Round (10 criteria, HO only). 1–5 stars + remarks.
-- Hard blocks: manager_interview needs HR; selected needs prior round.
-- Records lock on `joined`/`rejected`.
-
-## Branch Permission Matrix (May 2026)
-- VIEW (GET): All 11 roles
-- CREATE/EDIT (POST/PUT): CEO, HR, 4 Managers, Sr HR, Jr HR
-- DELETE: CEO, HR, Sr HR, Jr HR ONLY
+### Stage Transitions
+- HR interview → Manager interview requires HR questionnaire submitted + manager_id field.
+- Selected requires prior interview round.
+- `three_months` auto-saves `three_months_start_date` + `three_months_due_date` (now+90d) AND dispatches WhatsApp Offer Letter + creates `offer_letters` DB record.
+- Hold → Selected (or any forward stage) now works (Feb 2026 bug fix).
+- Hold pop-up requires mandatory reason.
 
 ## Implemented Features
 
-### Phase 1 (Apr 17, 2026)
-- Restructured pipelines (HO vs Tech) with hold/dead parallel states
-- HR & Manager questionnaire forms with 10-criterion star ratings
-- Backend hard blocks on stage transitions
-- Employee DB segmentation (branch/head_office × tech/mid/mgmt)
-- Employee exit endpoint (CEO/HR only)
+### Feb 2026 — Massive Update (Latest)
+- New `three_months` pipeline stage with 90-day notification system
+- Offer Letter records auto-generated on three_months transition + WhatsApp dispatch
+- Dashboard `lead_split` — HO Total/Today, Franchise Total/Today, 3-Month Due counts
+- Dashboard global Date Filter (All/Today/Yesterday/7/30/Month) wired to backend `date_from`, `date_to`, `days`
+- Hamburger menu split — Head Office Leads + Franchise Leads (separate pages)
+- Hold reason mandatory popup with backend validation
+- Hold → Selected transition fix (any forward linear stage from hold's previous)
+- Manager assignment at manager_interview stage (`manager_id` required, sets `assigned_manager_id` on lead)
+- Manager Round Form role-gated — only Managers + CEO/HR can submit (Sr HR/Jr HR/Coord/Designer = 403)
+- Chat → Request Design dialog → creates design_request, notifies all Graphic Designers
+- Graphic Designer dashboard panel for chat-origin design requests with status update buttons
+- Database menu — HO Employees + Franchise Employees tabs with detail dialog (resume, HR/Mgr reviews, offer letter history, stage history, exit info)
+- Task Manager — ALL users can assign tasks to ANY user (no more RBAC blocks)
+- CEO Admin Tools panel — Reset/Clear All Business Data (preserves logins + audit logs)
+- Removed: Campaigns module (backend route + frontend page deleted), Talent Intel
+- Renamed: "Branch Manager" job role → "Franchise Manager"
+- Analytics funnel updated to new stage order
 
-### Phase 2 (Apr 27, 2026)
-- **Real WhatsApp 11za dispatch** — fire-and-forget httpx POST with template + URL substitution
-- **Public tokenized feedback forms** — single-use, no auth
-  - Rejection feedback (6 questions): clarity, experience, respect, response time, would-reapply, suggestion
-  - Exit feedback (9 questions): reasons, satisfaction, manager support, growth, compensation fairness, would-recommend, improvements, best memory
-- Auto-trigger on Dead/Exit → token created → WhatsApp sent
-- **CEO-only feedback viewer** — `/feedback-submissions` page with rejection/exit tabs, detail dialog
-- 410 response for already-submitted forms
+### Apr 2026 Phase 2 (preserved)
+- Real WhatsApp 11za dispatch (offer_letter, candidate_feedback, employee_exit_feedback templates)
+- Public tokenized feedback forms (rejection + exit)
+- CEO-only feedback viewer
+- Strict interview questionnaires (HR 10 + Manager 10 criteria)
+- Branch CRUD with auto-promotion to Active
+- Auto-job creation on Employee Exit
+- Resume upload + Medical info on lead detail
 
-### P1 (Apr 27, 2026)
-- **Analytics endpoint** `/api/analytics/summary` — funnel, conversion %, hold/dead reasons, sources, avg interview scores, avg time-to-hire
-- **Resume upload** on lead detail (PDF/DOC/DOCX/JPG/PNG, 10MB limit)
-- **Medical info** on lead detail (blood group, allergies, emergency contacts)
-- **Analytics page** with funnel chart, KPIs, leaderboard, weak stage detector
+## Backend API Endpoints (Key)
+- `GET /api/dashboard/stats?date_from&date_to&days` — returns `lead_split` block
+- `POST /api/leads/{id}/transition` — supports new stage rules
+- `POST /api/design-requests` — chat-origin design requests
+- `GET /api/offer-letters` + `?lead_id=` filter
+- `GET /api/offer-letters/three-months-due` — leads ready for joined conversion
+- `POST /api/admin/cleanup` — CEO-only data wipe (preserves users)
+- `GET /api/admin/cleanup-preview` — counts before wipe
 
-### P2 (Apr 27, 2026)
-- **System Intelligence** `/api/analytics/intelligence` — best HR interviewer (≥3 interviews, ranked by hit rate), weak stage detector (drop-off %), auto-generated insights
-
-### Franchise Recruitment (Apr 27, 2026)
-- Branch `status` derived: `upcoming` (no actual_opening_date) vs `active`
-- `/api/branches/recruitment-overview` — per-franchise: open_jobs, total_jobs, active_leads, hired
-- `/franchises` page with Upcoming/Active tabs and stat tiles per franchise
-
-### Core HRMS (legacy)
-- Auth, Branch/Job/Lead CRUD, Task automation, AI recommendations
-- 8 unique role dashboards (CEO, HR, Manager, Sr/Jr HR, FDE, Designer, Marketing Coord, Generic)
-- Post Panel, Campaigns, Meetings (Jitsi), Internal Chat, Notifications, Audit Logs
-
-## Backlog
-
-### P1
-- WebSocket real-time chat/notifications (currently polled)
-- Excel/PDF reports for analytics
-
-### P2
+## Backlog (P1/P2)
+- WebSocket real-time chat/notifications
+- Excel/PDF analytics exports
 - Call recording + AI sentiment
-- Talent heatmaps (location-based candidate density)
-- Gamification (HR leaderboard with points)
+- Scheduled job to auto-create notifications when three_months_due_date passes (currently surfaced on dashboard count, but no push notification)
+- WhatsApp template approval reminder banner for CEO/HR
