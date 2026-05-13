@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Template names — configured on 11za dashboard. Using sensible defaults; override via env.
 REJECT_TEMPLATE = os.environ.get("WHATSAPP_REJECT_TEMPLATE", "candidate_feedback")
 EXIT_TEMPLATE = os.environ.get("WHATSAPP_EXIT_TEMPLATE", "employee_exit_feedback")
+OFFER_TEMPLATE = os.environ.get("WHATSAPP_OFFER_TEMPLATE", "offer_letter")
 
 
 def _normalize_phone(phone: str) -> tuple[str, str]:
@@ -112,4 +113,24 @@ async def send_exit_feedback(employee: dict, reason: str, feedback_token: str):
         callback=f"exit:{employee.get('id', '')}",
     )
     logger.info(f"[WhatsApp] exit link={url} result={result}")
+    return result
+
+
+async def send_offer_letter(lead: dict, role: str, branch_name: str):
+    """Dispatch a WhatsApp offer letter message on 3-month confirmation.
+    Template body: {{1}}=candidate name, {{2}}=role, {{3}}=branch/department.
+    """
+    body_values = [
+        lead.get("name") or "Candidate",
+        role or "the assigned role",
+        branch_name or "Servall",
+    ]
+    result = await _send_template(
+        phone=lead.get("phone", ""),
+        template=OFFER_TEMPLATE,
+        body_values=body_values,
+        button_url_path="offer",
+        callback=f"offer:{lead.get('id', '')}",
+    )
+    logger.info(f"[WhatsApp] offer letter sent lead={lead.get('id')} role={role} result={result}")
     return result

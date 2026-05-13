@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import API from '@/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,20 +17,17 @@ import InterviewFormDialog from '@/components/InterviewFormDialog';
 import { StarRating } from '@/components/StarRating';
 
 const STAGE_LABELS = {
-  new_lead: 'New Lead',
+  new_lead: 'New',
   qualified: 'Qualified',
-  hr_interview: 'HR Interview',
-  manager_interview: 'Manager Interview',
+  hr_interview: 'HR',
+  manager_interview: 'Manager',
   selected: 'Selected',
+  three_months: '3 Months',
   hold: 'Hold',
   joined: 'Joined',
   rejected: 'Rejected',
-  // legacy
   move_ahead: 'Selected',
   dead: 'Rejected',
-  awaiting_interview: 'Awaiting Interview',
-  interview_cleared: 'Interview Cleared',
-  nurture: 'Nurture',
 };
 
 const STAGE_COLORS = {
@@ -38,22 +36,20 @@ const STAGE_COLORS = {
   hr_interview: 'bg-amber-100 text-amber-700',
   manager_interview: 'bg-violet-100 text-violet-700',
   selected: 'bg-teal-100 text-teal-700',
+  three_months: 'bg-indigo-100 text-indigo-700',
   hold: 'bg-orange-100 text-orange-700',
   joined: 'bg-green-100 text-green-700',
   rejected: 'bg-rose-100 text-rose-700',
   move_ahead: 'bg-teal-100 text-teal-700',
   dead: 'bg-rose-100 text-rose-700',
-  awaiting_interview: 'bg-amber-100 text-amber-700',
-  interview_cleared: 'bg-violet-100 text-violet-700',
-  nurture: 'bg-indigo-100 text-indigo-700',
 };
 
 const REJECTION_REASONS = ['not_interested', 'salary_mismatch', 'location_issue', 'no_response', 'hired_elsewhere', 'failed_interview', 'other'];
 const HOLD_REASONS = ['awaiting_response', 'salary_negotiation', 'reference_check', 'candidate_request', 'internal_review', 'other'];
 const INTERVIEW_MODES = ['in_person', 'video', 'phone'];
 
-const HO_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'manager_interview', 'selected', 'joined'];
-const TECH_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'selected', 'joined'];
+const HO_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'manager_interview', 'selected', 'three_months', 'joined'];
+const TECH_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'selected', 'three_months', 'joined'];
 
 function getNextStage(current, isTech) {
   const order = isTech ? TECH_LINEAR : HO_LINEAR;
@@ -82,10 +78,12 @@ function ScheduleRow({ title, d }) {
 export default function LeadDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [lead, setLead] = useState(null);
   const [history, setHistory] = useState([]);
   const [calls, setCalls] = useState([]);
   const [interviews, setInterviews] = useState({ hr: null, manager: null });
+  const [managers, setManagers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [targetStage, setTargetStage] = useState('');
@@ -99,16 +97,19 @@ export default function LeadDetailPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [leadRes, historyRes, callsRes, ivRes] = await Promise.all([
+      const [leadRes, historyRes, callsRes, ivRes, usersRes] = await Promise.all([
         API.get(`/leads/${id}`),
         API.get(`/leads/${id}/history`),
         API.get(`/leads/${id}/calls`),
         API.get(`/interviews/${id}`),
+        API.get('/users'),
       ]);
       setLead(leadRes.data);
       setHistory(historyRes.data);
       setCalls(callsRes.data);
       setInterviews(ivRes.data);
+      const mgrRoles = ['Marketing Manager', 'Operations Manager', 'Sales Manager', 'Accounts Manager'];
+      setManagers((usersRes.data || []).filter(u => mgrRoles.includes(u.role)));
     } catch { toast.error('Failed to load lead details'); }
     finally { setLoading(false); }
   }, [id]);
@@ -212,7 +213,7 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-4 max-w-2xl" data-testid="lead-detail-page">
-      <Button variant="ghost" onClick={() => navigate('/leads')} className="text-slate-500 -ml-2" data-testid="back-to-leads">
+      <Button variant="ghost" onClick={() => navigate(lead.is_technician ? '/leads/franchise' : '/leads/head-office')} className="text-slate-500 -ml-2" data-testid="back-to-leads">
         <ArrowLeft className="w-4 h-4 mr-1" /> Back to Pipeline
       </Button>
 
@@ -298,7 +299,7 @@ export default function LeadDetailPage() {
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
         {/* HR Round form: available when in HR Interview stage (or past it for edits) */}
-        {['hr_interview', 'manager_interview', 'selected', 'move_ahead'].includes(lead.current_stage) && (
+        {['hr_interview', 'manager_interview', 'selected', 'three_months', 'move_ahead'].includes(lead.current_stage) && (
           <Button
             onClick={() => setInterviewDialog({ open: true, round: 'hr' })}
             className="bg-amber-600 hover:bg-amber-700"
@@ -307,16 +308,21 @@ export default function LeadDetailPage() {
             <StarIcon className="w-4 h-4 mr-1" /> HR Round Form {interviews.hr && '✓'}
           </Button>
         )}
-        {/* Manager Round form (HO only) */}
-        {!isTech && ['manager_interview', 'selected', 'move_ahead'].includes(lead.current_stage) && (
-          <Button
-            onClick={() => setInterviewDialog({ open: true, round: 'manager' })}
-            className="bg-violet-600 hover:bg-violet-700"
-            data-testid="open-manager-interview-button"
-          >
-            <StarIcon className="w-4 h-4 mr-1" /> Manager Round Form {interviews.manager && '✓'}
-          </Button>
-        )}
+        {/* Manager Round form (HO only). Only managers (or CEO/HR override) may submit. */}
+        {!isTech && ['manager_interview', 'selected', 'three_months', 'move_ahead'].includes(lead.current_stage) && (() => {
+          const canFill = ['CEO', 'HR', 'Marketing Manager', 'Operations Manager', 'Sales Manager', 'Accounts Manager'].includes(currentUser?.role);
+          return (
+            <Button
+              onClick={() => setInterviewDialog({ open: true, round: 'manager' })}
+              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
+              disabled={!canFill && !interviews.manager}
+              title={!canFill ? 'Only the assigned Manager (or CEO/HR) can fill this review' : ''}
+              data-testid="open-manager-interview-button"
+            >
+              <StarIcon className="w-4 h-4 mr-1" /> Manager Round {interviews.manager ? '· View' : (canFill ? 'Form' : '· Locked')} {interviews.manager && '✓'}
+            </Button>
+          );
+        })()}
 
         {nextStage && !['hold', 'rejected', 'dead', 'joined'].includes(lead.current_stage) && (
           <Button
@@ -351,7 +357,7 @@ export default function LeadDetailPage() {
         <Button variant="outline" onClick={() => setCallDialogOpen(true)} data-testid="add-call-button">
           <Phone className="w-4 h-4 mr-1" /> Log Call
         </Button>
-        {(lead.current_stage === 'selected' || lead.current_stage === 'move_ahead' || lead.current_stage === 'interview_cleared') && (
+        {(lead.current_stage === 'selected' || lead.current_stage === 'three_months' || lead.current_stage === 'move_ahead' || lead.current_stage === 'joined' || lead.current_stage === 'interview_cleared') && (
           <Button variant="outline" className="text-emerald-600" onClick={() => setConvertOpen(true)} data-testid="convert-employee-button">Convert to Employee</Button>
         )}
       </div>
@@ -491,6 +497,16 @@ export default function LeadDetailPage() {
             {(targetStage === 'hr_interview' || targetStage === 'manager_interview') && (
               <>
                 <p className="text-xs text-slate-500">Schedule the {targetStage === 'hr_interview' ? 'HR' : 'Manager'} interview.</p>
+                {targetStage === 'manager_interview' && (
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Assign Manager *</Label>
+                    <Select value={formData.manager_id || ''} onValueChange={(v) => setFormData({ ...formData, manager_id: v })}>
+                      <SelectTrigger className="mt-1" data-testid="form-manager-select"><SelectValue placeholder="Select manager" /></SelectTrigger>
+                      <SelectContent>{managers.map(m => <SelectItem key={m.id} value={m.id}>{m.name} ({m.role})</SelectItem>)}</SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-slate-400 mt-1">Selected manager will be notified and only they can fill the manager review.</p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Date</Label><Input type="date" value={formData.interview_date || ''} onChange={(e) => setFormData({ ...formData, interview_date: e.target.value })} className="mt-1" data-testid="form-interview-date" /></div>
                   <div><Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Time</Label><Input type="time" value={formData.interview_time || ''} onChange={(e) => setFormData({ ...formData, interview_time: e.target.value })} className="mt-1" data-testid="form-interview-time" /></div>
@@ -511,8 +527,11 @@ export default function LeadDetailPage() {
             {targetStage === 'selected' && (
               <p className="text-sm text-slate-600">Confirm final recommendation. Prior interview round must be completed.</p>
             )}
+            {targetStage === 'three_months' && (
+              <p className="text-sm text-indigo-700">Moving to <strong>3-Month tracking</strong>. An offer letter will be sent via WhatsApp and saved in the database. After 90 days, a notification will be generated to convert to Joined.</p>
+            )}
             {targetStage === 'joined' && (
-              <div><Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Joining Date</Label><Input type="date" value={formData.joining_date || ''} onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })} className="mt-1" data-testid="form-joining-date" /></div>
+              <div><Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Joining Date (optional)</Label><Input type="date" value={formData.joining_date || ''} onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })} className="mt-1" data-testid="form-joining-date" /></div>
             )}
             {targetStage === 'hold' && (
               <>

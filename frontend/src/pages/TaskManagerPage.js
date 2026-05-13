@@ -34,13 +34,12 @@ const STATUS_META = {
 export default function TaskManagerPage() {
   const { user } = useAuth();
   const isSuper = SUPER_ROLES.includes(user?.role);
-  const isManager = MANAGER_ROLES.includes(user?.role);
-  const canAssign = isSuper || isManager;
+  const canAssign = true; // All users can assign tasks now
 
   const [tasks, setTasks] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [scope, setScope] = useState(isSuper ? 'all' : 'my'); // my | assigned_by_me | all
+  const [scope, setScope] = useState('all'); // my | assigned_by_me | all
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateRange, setDateRange] = useState({ preset: '30d' });
   const [createOpen, setCreateOpen] = useState(false);

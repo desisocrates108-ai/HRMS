@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   Briefcase, Users, UserCheck, TrendingUp, Phone, CheckSquare,
@@ -21,14 +22,45 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { API.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {}).finally(() => setLoading(false)); }, []);
+  const [dateFilter, setDateFilter] = useState('all');
+
+  const fetchStats = useCallback(() => {
+    const params = {};
+    if (dateFilter === 'today') {
+      const t = new Date(); t.setHours(0,0,0,0);
+      params.date_from = t.toISOString();
+    } else if (dateFilter === 'yesterday') {
+      const t = new Date(); t.setHours(0,0,0,0); t.setDate(t.getDate() - 1);
+      const e = new Date(t); e.setDate(e.getDate() + 1);
+      params.date_from = t.toISOString(); params.date_to = e.toISOString();
+    } else if (dateFilter === '7') {
+      params.days = 7;
+    } else if (dateFilter === '30') {
+      params.days = 30;
+    } else if (dateFilter === 'month') {
+      const t = new Date(); const start = new Date(t.getFullYear(), t.getMonth(), 1);
+      params.date_from = start.toISOString();
+    }
+    setLoading(true);
+    API.get('/dashboard/stats', { params }).then(r => setStats(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [dateFilter]);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">Loading...</div>;
   if (!stats) return <div className="text-center py-12 text-slate-500">Failed to load dashboard</div>;
 
   const t = stats.type;
-  if (t === 'ceo') return <CEODash s={stats} u={user} />;
-  if (t === 'hr') return <HRDash s={stats} u={user} />;
-  if (t === 'manager') return <ManagerDash s={stats} u={user} />;
+  const headerBar = (
+    <div className="flex items-center justify-between flex-wrap gap-2 -mb-2">
+      <div></div>
+      <DateFilterBar value={dateFilter} onChange={setDateFilter} />
+    </div>
+  );
+
+  if (t === 'ceo') return <><div className="mb-2"><DateFilterBar value={dateFilter} onChange={setDateFilter} /></div><CEODash s={stats} u={user} /></>;
+  if (t === 'hr') return <><div className="mb-2"><DateFilterBar value={dateFilter} onChange={setDateFilter} /></div><HRDash s={stats} u={user} /></>;
+  if (t === 'manager') return <><div className="mb-2"><DateFilterBar value={dateFilter} onChange={setDateFilter} /></div><ManagerDash s={stats} u={user} /></>;
   if (t === 'sr_jr_hr') return <SrJrHRDash s={stats} u={user} />;
   if (t === 'fde') return <FDEDash s={stats} u={user} />;
   if (t === 'designer') return <DesignerDash s={stats} u={user} />;
@@ -73,6 +105,65 @@ function PipelineRow({ pipeline, isTechnician }) {
         >
           <div className="text-[10px] font-semibold text-slate-500 uppercase">{SL[s]?.split(' ')[0]}</div>
           <div className="text-lg font-bold" style={{ color: SC[s] }}>{pipeline?.[s] || 0}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LeadSplitCards({ split }) {
+  const nav = useNavigate();
+  if (!split) return null;
+  return (
+    <Card className="border-slate-200 shadow-none" data-testid="lead-split-cards">
+      <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Lead Split (Head Office vs Franchise)</CardTitle></CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <button onClick={() => nav('/leads/head-office')} className="flex items-center gap-2 px-3 py-3 rounded-md bg-blue-50 text-blue-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left" data-testid="lead-split-ho-total">
+            <Building2 className="w-4 h-4 opacity-70" />
+            <div><p className="text-xs opacity-80">HO · Total</p><p className="text-lg font-semibold">{split.ho_total||0}</p></div>
+          </button>
+          <button onClick={() => nav('/leads/head-office')} className="flex items-center gap-2 px-3 py-3 rounded-md bg-blue-50/60 text-blue-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left" data-testid="lead-split-ho-today">
+            <Clock className="w-4 h-4 opacity-70" />
+            <div><p className="text-xs opacity-80">HO · Today</p><p className="text-lg font-semibold">{split.ho_today||0}</p></div>
+          </button>
+          <button onClick={() => nav('/leads/franchise')} className="flex items-center gap-2 px-3 py-3 rounded-md bg-emerald-50 text-emerald-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left" data-testid="lead-split-fr-total">
+            <Users className="w-4 h-4 opacity-70" />
+            <div><p className="text-xs opacity-80">Franchise · Total</p><p className="text-lg font-semibold">{split.franchise_total||0}</p></div>
+          </button>
+          <button onClick={() => nav('/leads/franchise')} className="flex items-center gap-2 px-3 py-3 rounded-md bg-emerald-50/60 text-emerald-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left" data-testid="lead-split-fr-today">
+            <Clock className="w-4 h-4 opacity-70" />
+            <div><p className="text-xs opacity-80">Franchise · Today</p><p className="text-lg font-semibold">{split.franchise_today||0}</p></div>
+          </button>
+          <button onClick={() => nav('/leads/head-office?stage=three_months')} className="flex items-center gap-2 px-3 py-3 rounded-md bg-indigo-50 text-indigo-700 hover:-translate-y-0.5 hover:shadow-sm transition-all text-left" data-testid="lead-split-3mo-due">
+            <AlertCircle className="w-4 h-4 opacity-70" />
+            <div><p className="text-xs opacity-80">3-Month Due</p><p className="text-lg font-semibold">{split.three_months_due||0}</p></div>
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DateFilterBar({ value, onChange }) {
+  const opts = [
+    { value: 'all', label: 'All' },
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: '7', label: '7 Days' },
+    { value: '30', label: '30 Days' },
+    { value: 'month', label: 'This Month' },
+  ];
+  return (
+    <div className="flex gap-1 flex-wrap" data-testid="dashboard-date-filter">
+      {opts.map(o => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${value === o.value ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}
+          data-testid={`date-filter-${o.value}`}
+        >
+          {o.label}
         </button>
       ))}
     </div>
@@ -229,10 +320,23 @@ function MeetingButtons() {
 // ===================== CEO =====================
 function CEODash({ s }) {
   const [exp, setExp] = useState(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [preview, setPreview] = useState(null);
   const tm = s.top_metrics||{};
+  const openCleanup = async () => {
+    try { const { data } = await API.get('/admin/cleanup-preview'); setPreview(data.counts); setCleanupOpen(true); }
+    catch { /* noop */ }
+  };
+  const runCleanup = async () => {
+    setCleaning(true);
+    try { await API.post('/admin/cleanup'); window.location.reload(); }
+    catch { setCleaning(false); }
+  };
   return (<div className="space-y-5" data-testid="ceo-dashboard">
     <h1 className="text-2xl font-heading font-semibold text-slate-900">CEO Dashboard</h1>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /></div>
+    <LeadSplitCards split={s.lead_split} />
     {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => window.location.href = '/jobs'}><CardContent className="p-3"><div className="flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4 text-red-600" /><span className="text-sm font-semibold text-red-800">Overdue Jobs ({s.overdue_jobs.length})</span></div>{s.overdue_jobs.map(j => <p key={j.id} className="text-xs text-red-700">{j.role} - {j.location} (deadline: {j.deadline})</p>)}</CardContent></Card>}
     <LeadSourceCards data={s} />
     <Tabs defaultValue="technician"><TabsList className="grid grid-cols-2 w-full md:w-96"><TabsTrigger value="technician" data-testid="tab-technician">Franchise (FDE)</TabsTrigger><TabsTrigger value="ho" data-testid="tab-ho">Head Office (HR)</TabsTrigger></TabsList>
@@ -245,6 +349,38 @@ function CEODash({ s }) {
     </div>))}</div>}</CardContent></Card>
     <FranchisesCard data={s.franchises} />
     <MeetingButtons />
+
+    {/* Admin Tools — CEO only */}
+    <Card className="border-rose-200 shadow-none bg-rose-50/30" data-testid="admin-tools-card">
+      <CardHeader className="pb-2"><CardTitle className="text-base font-medium text-rose-700">Admin Tools</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-rose-600">Use these tools carefully. Logins, audit logs, and role configurations are preserved.</p>
+        <Button variant="outline" className="text-rose-700 border-rose-200 hover:bg-rose-100" onClick={openCleanup} data-testid="open-cleanup-button">
+          Reset / Clear All Business Data
+        </Button>
+      </CardContent>
+    </Card>
+
+    <Dialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Clear Demo / Live Data</DialogTitle></DialogHeader>
+        <div className="space-y-2 text-sm">
+          <p className="text-rose-700 font-medium">This will permanently remove:</p>
+          <div className="max-h-60 overflow-y-auto bg-slate-50 p-2 rounded text-xs space-y-0.5">
+            {preview && Object.entries(preview).map(([k, v]) => (
+              <div key={k} className="flex justify-between"><span className="text-slate-700">{k}</span><span className="font-mono text-slate-900">{v}</span></div>
+            ))}
+          </div>
+          <p className="text-emerald-700 text-xs">Preserved: user logins, audit logs, role/permission setup, WhatsApp env.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCleanupOpen(false)}>Cancel</Button>
+          <Button onClick={runCleanup} className="bg-rose-600 hover:bg-rose-700" disabled={cleaning} data-testid="confirm-cleanup-button">
+            {cleaning ? 'Clearing...' : 'Yes, Clear All Data'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>);
 }
 
@@ -255,6 +391,7 @@ function HRDash({ s }) {
   return (<div className="space-y-5" data-testid="hr-dashboard">
     <h1 className="text-2xl font-heading font-semibold text-slate-900">HR Dashboard</h1>
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /><KPI icon={Phone} label="Today Calls" value={tm.calls_today} color="text-blue-600" to="/leads" /></div>
+    <LeadSplitCards split={s.lead_split} />
     <div className="flex gap-3 flex-wrap"><Button size="sm" variant="outline" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-3 h-3 mr-1" />Post Panel ({s.pending_reviews||0} to review)</Button><Button size="sm" variant="outline" onClick={() => nav('/leads')}>All Leads</Button><Button size="sm" variant="outline" onClick={() => nav('/jobs')}>All Jobs ({s.all_jobs?.length||0})</Button></div>
     {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => nav('/jobs')}><CardContent className="p-3"><AlertCircle className="w-4 h-4 text-red-600 inline mr-1" /><span className="text-sm font-semibold text-red-800">Overdue: </span>{s.overdue_jobs.map(j => <Badge key={j.id} variant="destructive" className="text-xs mr-1">{j.role}</Badge>)}</CardContent></Card>}
     <PipelineRow pipeline={s.overall_pipeline} />
@@ -275,6 +412,7 @@ function ManagerDash({ s }) {
   return (<div className="space-y-5" data-testid="manager-dashboard">
     <h1 className="text-2xl font-heading font-semibold text-slate-900">{s.department} Manager</h1>
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3"><KPI icon={Briefcase} label="Jobs Created" value={tm.jobs_created} color="text-blue-700" to="/jobs" /><KPI icon={TrendingUp} label="Active Hirings" value={tm.active_hirings} color="text-emerald-600" to="/jobs" /><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-violet-600" to="/leads" /><KPI icon={Users} label="New Leads" value={tm.new_leads} color="text-amber-600" to="/leads?stage=new_lead" /><KPI icon={UserCheck} label="Hires" value={tm.total_hires} color="text-indigo-600" to="/employees" /></div>
+    <LeadSplitCards split={s.lead_split} />
     {s.alerts?.length > 0 && <Card className="border-amber-200 bg-amber-50/50 shadow-none"><CardContent className="p-3">{s.alerts.map((a,i) => <div key={i} className="flex items-center gap-2 text-sm py-0.5"><AlertCircle className={`w-3 h-3 ${a.type==='overdue'?'text-red-600':'text-amber-600'}`} /><span className={a.type==='overdue'?'text-red-700':'text-amber-700'}>{a.message}</span></div>)}</CardContent></Card>}
     <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-base font-medium">My Job Openings</CardTitle><Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => nav('/jobs')}>Create Job</Button></div></CardHeader><CardContent>
       {!s.jobs?.length ? <p className="text-sm text-slate-500">No jobs created yet</p> : <div className="space-y-2">{s.jobs.map(j => (
@@ -324,11 +462,50 @@ function FDEDash({ s, u }) {
 // ===================== GRAPHIC DESIGNER =====================
 function DesignerDash({ s }) {
   const nav = useNavigate();
+  const [designReqs, setDesignReqs] = useState([]);
+  useEffect(() => { API.get('/design-requests').then(r => setDesignReqs(r.data)).catch(() => {}); }, []);
+  const pendingCount = designReqs.filter(r => r.status === 'pending').length;
+  const updateStatus = async (id, status) => {
+    try { await API.put(`/design-requests/${id}`, { status }); setDesignReqs(designReqs.map(d => d.id === id ? { ...d, status } : d)); }
+    catch (e) { /* noop */ }
+  };
   return (<div className="space-y-5" data-testid="designer-dashboard">
     <h1 className="text-2xl font-heading font-semibold text-slate-900">Design Dashboard</h1>
-    <div className="grid grid-cols-2 gap-3"><KPI icon={Image} label="Pending Requests" value={s.total_pending} color="text-amber-600" to="/posts" /><KPI icon={CheckSquare} label="Completed" value={s.total_completed} color="text-emerald-600" to="/posts" /></div>
+    <div className="grid grid-cols-3 gap-3"><KPI icon={Image} label="Pending Posts" value={s.total_pending} color="text-amber-600" to="/posts" /><KPI icon={CheckSquare} label="Completed" value={s.total_completed} color="text-emerald-600" to="/posts" /><KPI icon={Image} label="Chat Design Requests" value={pendingCount} color="text-pink-600" /></div>
     <Button className="bg-blue-700 hover:bg-blue-800" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-4 h-4 mr-1" />Open Post Panel</Button>
-    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium text-amber-700">Pending Requests ({s.total_pending})</CardTitle></CardHeader><CardContent>{!s.pending_requests?.length ? <p className="text-sm text-slate-500">No pending requests</p> : <div className="space-y-2">{s.pending_requests.map(r => (
+
+    {/* Chat-Origin Design Requests */}
+    <Card className="border-slate-200 shadow-none" data-testid="chat-design-requests-card">
+      <CardHeader className="pb-2"><CardTitle className="text-base font-medium text-pink-700">Design Requests (from Chat)</CardTitle></CardHeader>
+      <CardContent>
+        {!designReqs.length ? <p className="text-sm text-slate-500">No design requests yet</p> : (
+          <div className="space-y-2">
+            {designReqs.map(r => (
+              <div key={r.id} className="p-3 rounded-lg border border-slate-200 bg-white" data-testid={`design-req-${r.id}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-sm text-slate-900 truncate">{r.title}</p>
+                  <Badge className={r.priority === 'urgent' ? 'bg-rose-100 text-rose-700 border-0' : r.priority === 'high' ? 'bg-amber-100 text-amber-700 border-0' : 'bg-slate-100 text-slate-700 border-0'}>{r.priority}</Badge>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">{r.description}</p>
+                <p className="text-xs text-slate-400 mt-1">By {r.requested_by_name} ({r.requested_by_role}) · {r.branch_department || '—'} · {r.required_date || 'no date'}</p>
+                <div className="flex gap-1 mt-2">
+                  {['pending', 'in_progress', 'completed'].map(st => (
+                    <button
+                      key={st}
+                      onClick={() => updateStatus(r.id, st)}
+                      className={`px-2 py-0.5 text-xs rounded border transition-all ${r.status === st ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                      data-testid={`design-status-${r.id}-${st}`}
+                    >{st}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+
+    <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium text-amber-700">Pending Post Requests ({s.total_pending})</CardTitle></CardHeader><CardContent>{!s.pending_requests?.length ? <p className="text-sm text-slate-500">No pending requests</p> : <div className="space-y-2">{s.pending_requests.map(r => (
       <div key={r.id} onClick={() => nav('/posts')} className="p-3 rounded-lg border border-amber-200 bg-amber-50/30 cursor-pointer hover:bg-amber-50/50 transition-colors" data-testid={`design-pending-${r.id}`}><p className="font-medium text-sm text-slate-900">{r.role} - {r.job_info}</p><p className="text-xs text-slate-500 mt-1">Requested by: {r.requested_by_name}</p><p className="text-xs text-slate-400">{new Date(r.created_at).toLocaleString()}</p></div>
     ))}</div>}</CardContent></Card>
     {s.my_posts?.length > 0 && <Card className="border-slate-200 shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base font-medium">My Uploads</CardTitle></CardHeader><CardContent><div className="space-y-2">{s.my_posts.map(p => (

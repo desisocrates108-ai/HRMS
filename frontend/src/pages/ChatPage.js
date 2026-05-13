@@ -35,6 +35,9 @@ export default function ChatPage() {
   const [addForm, setAddForm] = useState({ user_id: '', permission: 'can_reply', show_history: true });
   const [editingMsg, setEditingMsg] = useState(null);
   const [editText, setEditText] = useState('');
+  const [designReqOpen, setDesignReqOpen] = useState(false);
+  const [designForm, setDesignForm] = useState({ title: '', description: '', branch_department: '', priority: 'medium', required_date: '' });
+  const [designSaving, setDesignSaving] = useState(false);
   const messagesEndRef = useRef(null);
   const pollRef = useRef(null);
   const lastPollTime = useRef(new Date().toISOString());
@@ -194,11 +197,16 @@ export default function ChatPage() {
       {/* Chat List Panel */}
       {showList && (
         <div className={`${activeChat && !isMobile ? 'w-80 border-r border-slate-200' : 'w-full'} flex flex-col bg-white`}>
-          <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+          <div className="p-3 border-b border-slate-200 flex items-center justify-between gap-2">
             <h2 className="font-heading font-semibold text-slate-900">Chats</h2>
-            <Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => setNewChatOpen(true)} data-testid="new-chat-button">
-              <Plus className="w-4 h-4 mr-1" /> New
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" className="text-pink-600 border-pink-200 hover:bg-pink-50" onClick={() => setDesignReqOpen(true)} data-testid="request-design-button">
+                <Image className="w-4 h-4 mr-1" /> Request Design
+              </Button>
+              <Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => setNewChatOpen(true)} data-testid="new-chat-button">
+                <Plus className="w-4 h-4 mr-1" /> New
+              </Button>
+            </div>
           </div>
           <ScrollArea className="flex-1">
             {chats.length === 0 ? (
@@ -464,6 +472,75 @@ export default function ChatPage() {
             </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Design Dialog */}
+      <Dialog open={designReqOpen} onOpenChange={setDesignReqOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Design</DialogTitle>
+            <DialogDescription>Send a design request directly to the Graphic Designer team.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Title *</Label>
+              <Input value={designForm.title} onChange={(e) => setDesignForm({ ...designForm, title: e.target.value })} placeholder="e.g., Instagram banner for new branch launch" className="mt-1" data-testid="design-title-input" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Description</Label>
+              <Input value={designForm.description} onChange={(e) => setDesignForm({ ...designForm, description: e.target.value })} placeholder="Detailed brief..." className="mt-1" data-testid="design-description-input" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Branch / Department</Label>
+              <Input value={designForm.branch_department} onChange={(e) => setDesignForm({ ...designForm, branch_department: e.target.value })} placeholder="Optional" className="mt-1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</Label>
+                <Select value={designForm.priority} onValueChange={(v) => setDesignForm({ ...designForm, priority: v })}>
+                  <SelectTrigger className="mt-1" data-testid="design-priority-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Required Date</Label>
+                <Input type="date" value={designForm.required_date} onChange={(e) => setDesignForm({ ...designForm, required_date: e.target.value })} className="mt-1" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDesignReqOpen(false)}>Cancel</Button>
+            <Button
+              disabled={designSaving || !designForm.title.trim()}
+              onClick={async () => {
+                setDesignSaving(true);
+                try {
+                  await API.post('/design-requests', {
+                    title: designForm.title.trim(),
+                    description: designForm.description.trim(),
+                    branch_department: designForm.branch_department || null,
+                    priority: designForm.priority,
+                    required_date: designForm.required_date || null,
+                  });
+                  toast.success('Design request sent to designer team');
+                  setDesignReqOpen(false);
+                  setDesignForm({ title: '', description: '', branch_department: '', priority: 'medium', required_date: '' });
+                } catch (err) {
+                  toast.error(err?.response?.data?.detail || 'Failed to submit request');
+                } finally { setDesignSaving(false); }
+              }}
+              className="bg-pink-600 hover:bg-pink-700"
+              data-testid="submit-design-request-button"
+            >
+              {designSaving ? 'Sending...' : 'Send Request'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

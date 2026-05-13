@@ -22,11 +22,13 @@ from routes.audit import router as audit_router
 from routes.chat import router as chat_router
 from routes.notifications import router as notifications_router
 from routes.posts import router as posts_router
-from routes.campaigns import router as campaigns_router
 from routes.meetings import router as meetings_router
 from routes.interviews import router as interviews_router
 from routes.feedback import router as feedback_router
 from routes.analytics import router as analytics_router
+from routes.design_requests import router as design_requests_router
+from routes.offer_letters import router as offer_letters_router
+from routes.admin_tools import router as admin_tools_router
 from database import client, db
 
 app = FastAPI(title="Servall Hiring OS", redirect_slashes=False)
@@ -48,11 +50,13 @@ api_router.include_router(audit_router, prefix="/audit", tags=["Audit"])
 api_router.include_router(chat_router, prefix="/chat", tags=["Chat"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(posts_router, prefix="/posts", tags=["Posts"])
-api_router.include_router(campaigns_router, prefix="/campaigns", tags=["Campaigns"])
 api_router.include_router(meetings_router, prefix="/meetings", tags=["Meetings"])
 api_router.include_router(interviews_router, prefix="/interviews", tags=["Interviews"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["Feedback"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(design_requests_router, prefix="/design-requests", tags=["DesignRequests"])
+api_router.include_router(offer_letters_router, prefix="/offer-letters", tags=["OfferLetters"])
+api_router.include_router(admin_tools_router, prefix="/admin", tags=["Admin"])
 
 
 @api_router.get("/")

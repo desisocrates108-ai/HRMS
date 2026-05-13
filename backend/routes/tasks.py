@@ -89,20 +89,18 @@ async def list_tasks(
     role = current_user.get("role")
     query = {}
 
-    if role in EXEC_ROLES_ALL:
+    # All users can see tasks that involve them
+    if scope == "my":
         query["assigned_to"] = current_user["id"]
-    elif role in MANAGER_ROLES:
-        if scope == "assigned_by_me":
-            query["created_by"] = current_user["id"]
-        else:
-            # default: my tasks (assigned to me) + tasks I created
+    elif scope == "assigned_by_me":
+        query["created_by"] = current_user["id"]
+    elif scope == "all":
+        # CEO/HR see everything; others see only their own (assigned to or by me)
+        if role not in SUPER_ROLES:
             query["$or"] = [{"assigned_to": current_user["id"]}, {"created_by": current_user["id"]}]
-    else:  # CEO / HR
-        if scope == "my":
-            query["assigned_to"] = current_user["id"]
-        elif scope == "assigned_by_me":
-            query["created_by"] = current_user["id"]
-        # else: all
+    else:
+        # default: tasks I'm involved in (assigned to me or by me)
+        query["$or"] = [{"assigned_to": current_user["id"]}, {"created_by": current_user["id"]}]
 
     if status:
         if status == "overdue":
@@ -126,16 +124,10 @@ async def list_tasks(
 
 @router.post("")
 async def create_task(data: TaskCreate, current_user: dict = Depends(get_current_user)):
-    role = current_user.get("role")
-    if role in EXEC_ROLES_ALL:
-        raise HTTPException(status_code=403, detail="Executives cannot assign tasks")
-
+    """All authenticated users can assign tasks to any other user."""
     assignee = await db.users.find_one({"id": data.assigned_to}, {"_id": 0})
     if not assignee:
         raise HTTPException(status_code=404, detail="Assignee not found")
-
-    if not _can_assign(current_user, assignee["role"]):
-        raise HTTPException(status_code=403, detail=f"You cannot assign tasks to {assignee['role']}")
 
     if data.priority not in {"low", "medium", "high", "urgent"}:
         raise HTTPException(status_code=400, detail="Invalid priority")
@@ -232,15 +224,9 @@ async def delete_task(task_id: str, current_user: dict = Depends(get_current_use
 
 @router.get("/assignable-users")
 async def get_assignable_users(current_user: dict = Depends(get_current_user)):
-    """Return users the current user can assign tasks to."""
-    role = current_user.get("role")
-    if role in SUPER_ROLES:
-        users = await db.users.find({"is_active": True, "id": {"$ne": current_user["id"]}}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
-    elif role in MANAGER_ROLES:
-        targets = list(MANAGER_DEPT_EXECUTORS.get(role, set()))
-        if not targets:
-            return []
-        users = await db.users.find({"role": {"$in": targets}, "is_active": True}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
-    else:
-        users = []
+    """Return all active users (any user can assign tasks to any other user)."""
+    users = await db.users.find(
+        {"is_active": True, "id": {"$ne": current_user["id"]}},
+        {"_id": 0, "id": 1, "name": 1, "role": 1},
+    ).to_list(500)
     return users

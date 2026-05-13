@@ -24,40 +24,41 @@ ROLE_HIERARCHY = {
 
 CEO_HR_ROLES = ["CEO", "HR"]
 
-# NEW PIPELINE MODEL (April 2026 restructure)
-# Head Office & Technician pipelines — hold/dead are parallel states (can be entered from any active stage)
-HO_LINEAR_STAGES = ["new_lead", "qualified", "hr_interview", "manager_interview", "selected", "joined"]
-TECH_LINEAR_STAGES = ["new_lead", "qualified", "hr_interview", "selected", "joined"]
+# PIPELINE MODEL (Feb 2026 restructure — added three_months stage)
+# Head Office: new_lead → qualified → hr_interview → manager_interview → selected → three_months → joined
+# Franchise:    new_lead → qualified → hr_interview → selected → three_months → joined
+# Parallel:    hold, rejected (can be entered from any active stage)
+HO_LINEAR_STAGES = ["new_lead", "qualified", "hr_interview", "manager_interview", "selected", "three_months", "joined"]
+TECH_LINEAR_STAGES = ["new_lead", "qualified", "hr_interview", "selected", "three_months", "joined"]
 PARALLEL_STAGES = ["hold", "rejected"]
 
 # All stages (union)
 PIPELINE_STAGES = list(dict.fromkeys(HO_LINEAR_STAGES + TECH_LINEAR_STAGES + PARALLEL_STAGES))
 
 STAGE_LABELS = {
-    "new_lead": "New Lead",
+    "new_lead": "New",
     "qualified": "Qualified",
-    "hr_interview": "HR Interview",
-    "manager_interview": "Manager Interview",
+    "hr_interview": "HR",
+    "manager_interview": "Manager",
     "selected": "Selected",
-    "hold": "Hold",
+    "three_months": "3 Months",
     "joined": "Joined",
+    "hold": "Hold",
     "rejected": "Rejected",
-    # legacy
+    # legacy aliases (read-only display only)
     "move_ahead": "Selected",
     "dead": "Rejected",
-    "awaiting_interview": "Awaiting Interview",
-    "interview_cleared": "Interview Cleared",
-    "nurture": "Nurture",
 }
 
 # Form field requirements per target stage
 STAGE_FORM_REQUIREMENTS = {
     "qualified": ["experience", "location_confirmation", "salary_expectation", "relocation_preference"],
     "hr_interview": ["interview_date", "interview_time", "mode", "interview_city", "interview_place"],
-    "manager_interview": ["interview_date", "interview_time", "mode", "interview_city", "interview_place"],
+    "manager_interview": ["interview_date", "interview_time", "mode", "interview_city", "interview_place", "manager_id"],
     "selected": [],
+    "three_months": [],
     "hold": ["hold_reason"],
-    "joined": ["joining_date"],
+    "joined": [],
     "rejected": ["rejection_reason"],
 }
 

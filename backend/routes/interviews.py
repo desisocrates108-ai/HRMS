@@ -141,4 +141,9 @@ async def submit_manager_round(
     data: InterviewSubmission,
     current_user: dict = Depends(get_current_user),
 ):
+    # Only manager-level users (or CEO/HR for override) may submit manager round.
+    role = current_user.get("role", "")
+    allowed = {"CEO", "HR", "Marketing Manager", "Operations Manager", "Sales Manager", "Accounts Manager", "Franchise Manager"}
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail="Only Managers (or CEO/HR) can submit Manager review")
     return await _submit_round(lead_id, "manager", MANAGER_ROUND_CRITERIA, data, current_user)

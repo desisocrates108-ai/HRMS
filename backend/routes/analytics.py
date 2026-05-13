@@ -39,8 +39,8 @@ async def analytics_summary(
     leads = await db.leads.find(lead_q, {"_id": 0}).to_list(10000)
 
     # --- Funnel counts ---
-    funnel_order_ho = ["new_lead", "qualified", "hr_interview", "manager_interview", "move_ahead", "joined"]
-    funnel_order_tech = ["new_lead", "qualified", "hr_interview", "move_ahead", "joined"]
+    funnel_order_ho = ["new_lead", "qualified", "hr_interview", "manager_interview", "selected", "three_months", "joined"]
+    funnel_order_tech = ["new_lead", "qualified", "hr_interview", "selected", "three_months", "joined"]
     order = funnel_order_tech if pipeline_type == "technician" else funnel_order_ho
 
     # A lead that reached stage X also counted X-1, X-2... Use lead_stage_logs
@@ -176,7 +176,7 @@ async def system_intelligence(
     reached = defaultdict(set)
     for lg in logs:
         reached[lg.get("to_stage")].add(lg["lead_id"])
-    order = ["new_lead", "qualified", "hr_interview", "manager_interview", "move_ahead", "joined"]
+    order = ["new_lead", "qualified", "hr_interview", "manager_interview", "selected", "three_months", "joined"]
     weak_stages = []
     for i in range(len(order) - 1):
         cur = len(reached.get(order[i], set()))

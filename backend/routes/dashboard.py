@@ -110,12 +110,59 @@ async def get_franchise_summary():
     return {"upcoming": upcoming, "active": active, "total_upcoming": len(upcoming), "total_active": len(active)}
 
 
+def _date_range_iso(date_from, date_to, days):
+    """Return a Mongo date filter clause for `created_at` based on the inputs."""
+    clause = None
+    if date_from or date_to:
+        clause = {}
+        if date_from:
+            clause["$gte"] = date_from
+        if date_to:
+            clause["$lte"] = date_to
+    elif days:
+        clause = {"$gte": (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()}
+    return clause
+
+
 @router.get("/stats")
-async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+async def get_dashboard_stats(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    days: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
+):
     role = current_user.get("role", "")
     dash_type = get_dashboard_type(role)
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0).isoformat()
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     notif_count = await db.notifications.count_documents({"user_id": current_user["id"], "read": False})
+
+    # Build the time-window filter once (used by HO/Franchise lead counters etc.)
+    dr = _date_range_iso(date_from, date_to, days)
+    base_lead_q = {}
+    if dr:
+        base_lead_q["created_at"] = dr
+
+    # HO vs Franchise (technician) lead counts (respecting date filter)
+    ho_lead_q = dict(base_lead_q, is_technician=False)
+    fr_lead_q = dict(base_lead_q, is_technician=True)
+    ho_lead_count = await db.leads.count_documents(ho_lead_q)
+    fr_lead_count = await db.leads.count_documents(fr_lead_q)
+    ho_today = await db.leads.count_documents({"is_technician": False, "created_at": {"$gte": today_start}})
+    fr_today = await db.leads.count_documents({"is_technician": True, "created_at": {"$gte": today_start}})
+
+    # 3-month due leads (any role can see count; details via /offer-letters/three-months-due)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    three_months_due_count = await db.leads.count_documents(
+        {"current_stage": "three_months", "three_months_due_date": {"$lte": now_iso}}
+    )
+
+    split_counts = {
+        "ho_total": ho_lead_count,
+        "ho_today": ho_today,
+        "franchise_total": fr_lead_count,
+        "franchise_today": fr_today,
+        "three_months_due": three_months_due_count,
+    }
 
     # ===================== CEO DASHBOARD =====================
     if dash_type == "ceo":
@@ -123,7 +170,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         total_hirings = await db.employees.count_documents({})
         calls_done = await db.call_logs.count_documents({})
 
-        all_leads = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+        all_leads = await db.leads.find(base_lead_q, {"_id": 0}).sort("created_at", -1).to_list(5000)
         all_leads = await enrich_leads(all_leads)
         tech_leads = [l for l in all_leads if l.get("is_technician")]
         ho_leads = [l for l in all_leads if not l.get("is_technician")]
@@ -154,6 +201,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         return {
             "type": "ceo", "user_level": "super",
             "top_metrics": {"total_leads": total_leads, "total_hirings": total_hirings, "total_employees": total_hirings, "calls_done": calls_done},
+            "lead_split": split_counts,
             "technician_hiring": {"jobs": tech_jobs, "leads_by_source": split_by_source(tech_leads), "pipeline": build_pipeline(tech_leads), "total_leads": len(tech_leads)},
             "ho_hiring": {"jobs": ho_jobs, "leads_by_source": split_by_source(ho_leads), "pipeline": build_pipeline(ho_leads), "total_leads": len(ho_leads)},
             "call_tracking": call_tracking[:15],
@@ -188,6 +236,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         return {
             "type": "hr", "user_level": "super",
             "top_metrics": {"total_leads": total_leads, "total_hirings": total_hirings, "total_employees": total_hirings, "calls_done": calls_done, "calls_today": calls_today},
+            "lead_split": split_counts,
             "technician_hiring": {"leads_by_source": split_by_source(tech_leads), "pipeline": build_pipeline(tech_leads), "total_leads": len(tech_leads)},
             "ho_hiring": {"leads_by_source": split_by_source(ho_leads), "pipeline": build_pipeline(ho_leads), "total_leads": len(ho_leads)},
             "all_jobs": all_jobs,
@@ -258,6 +307,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
         return {
             "type": "manager", "user_level": "manager", "department": department,
+            "lead_split": split_counts,
             "top_metrics": {"jobs_created": len(my_jobs), "active_hirings": len(active_jobs), "total_leads": len(job_leads), "new_leads": new_leads, "total_hires": hired},
             "jobs": my_jobs,
             "leads": job_leads[:30],
@@ -288,6 +338,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
         return {
             "type": "sr_jr_hr", "user_level": "executor",
+            "lead_split": split_counts,
             "all_jobs": all_jobs,
             "my_leads": my_leads[:30], "my_leads_count": len(my_leads),
             "my_pipeline": build_pipeline(my_leads),
@@ -314,6 +365,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
         return {
             "type": "fde", "user_level": "executor",
+            "lead_split": split_counts,
             "jobs": fde_jobs,
             "my_leads": my_leads[:30], "my_leads_count": len(my_leads),
             "my_pipeline": build_pipeline(my_leads),
@@ -332,6 +384,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
         return {
             "type": "designer", "user_level": "executor",
+            "lead_split": split_counts,
             "pending_requests": pending_requests,
             "my_posts": my_posts,
             "all_requests": all_requests,
@@ -350,6 +403,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
         return {
             "type": "mktg_coord", "user_level": "executor",
+            "lead_split": split_counts,
             "campaigns": my_campaigns,
             "pending_count": len(pending),
             "running_count": len(running),
@@ -367,6 +421,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
 
     return {
         "type": "executor", "user_level": "executor",
+        "lead_split": split_counts,
         "my_leads": my_leads[:20], "my_leads_count": len(my_leads),
         "my_pipeline": build_pipeline(my_leads),
         "calls_today": calls_today,

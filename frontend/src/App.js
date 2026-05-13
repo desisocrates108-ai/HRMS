@@ -13,10 +13,10 @@ import TaskManagerPage from '@/pages/TaskManagerPage';
 import PerformancePage from '@/pages/PerformancePage';
 import UsersPage from '@/pages/UsersPage';
 import EmployeesPage from '@/pages/EmployeesPage';
+import DatabasePage from '@/pages/DatabasePage';
 import AuditPage from '@/pages/AuditPage';
 import ChatPage from '@/pages/ChatPage';
 import PostPanelPage from '@/pages/PostPanelPage';
-import CampaignsPage from '@/pages/CampaignsPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import FeedbackSubmissionsPage from '@/pages/FeedbackSubmissionsPage';
 import FeedbackPage from '@/pages/FeedbackPage';
@@ -55,16 +55,18 @@ function App() {
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/branches/:id" element={<BranchDetailPage />} />
             <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/leads" element={<LeadsPipelinePage />} />
+            <Route path="/leads" element={<Navigate to="/leads/head-office" replace />} />
+            <Route path="/leads/head-office" element={<LeadsPipelinePage pipelineMode="head_office" />} />
+            <Route path="/leads/franchise" element={<LeadsPipelinePage pipelineMode="technician" />} />
             <Route path="/leads/:id" element={<LeadDetailPage />} />
             <Route path="/tasks" element={<TaskManagerPage />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/database" element={<DatabasePage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/posts" element={<PostPanelPage />} />
-            <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/feedback-submissions" element={<FeedbackSubmissionsPage />} />
           </Route>

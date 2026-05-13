@@ -1,0 +1,120 @@
+{
+  "summary": "Iteration 12 - Comprehensive Backend Testing: 27 PASSED. All major features tested including dashboard lead_split, three_months pipeline stage, hold transition requirements, Hold→Selected bug fix, manager_interview requirements, offer letters, design requests RBAC, tasks any-user-assign, manager interview role gating, analytics funnel, admin cleanup, employees category filter, and campaigns removal.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/offer-letters (via three_months transition)",
+        "issue": "WhatsApp returns 400 due to invalid auth token - EXPECTED per review request (templates not approved on 11za)",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "GET /api/dashboard/stats returns lead_split with ho_total, ho_today, franchise_total, franchise_today, three_months_due",
+    "GET /api/dashboard/stats?days=7 filter works correctly",
+    "GET /api/dashboard/stats?date_from=X&date_to=Y filter works correctly",
+    "GET /api/leads/pipeline-stats includes 'three_months' key",
+    "GET /api/leads/pipeline-stats has all expected stages (no legacy nurture/awaiting_interview/interview_cleared)",
+    "POST /api/leads/{id}/transition to 'hold' requires hold_reason field (400 if missing)",
+    "POST /api/leads/{id}/transition Hold → Selected works after HR interview submitted (bug fix verified)",
+    "POST /api/leads/{id}/transition to 'manager_interview' requires 'manager_id' field (400 if missing)",
+    "POST /api/leads/{id}/transition to 'manager_interview' sets lead.assigned_manager_id correctly",
+    "POST /api/leads/{id}/transition to 'three_months' creates offer_letters record with all required fields",
+    "POST /api/leads/{id}/transition to 'three_months' sets three_months_start_date and three_months_due_date (90 days later)",
+    "GET /api/offer-letters returns list of offer letters",
+    "GET /api/offer-letters?lead_id=X filters correctly",
+    "GET /api/offer-letters/three-months-due returns leads whose due_date <= now",
+    "POST /api/design-requests creates record (any user can create)",
+    "GET /api/design-requests - Designer/CEO/HR see all, others see only own",
+    "PUT /api/design-requests/{id} - owner cannot change status",
+    "PUT /api/design-requests/{id} - designer can change status",
+    "POST /api/tasks - Franchise Executive can assign task to anyone (any role can assign)",
+    "GET /api/tasks/assignable-users returns all active users (not filtered by role)",
+    "POST /api/interviews/{lead_id}/manager - Sr HR gets 403 (non-manager role)",
+    "POST /api/interviews/{lead_id}/manager - Marketing Coordinator gets 403 (non-manager role)",
+    "POST /api/interviews/{lead_id}/manager - Marketing Manager can submit (manager role allowed)",
+    "GET /api/analytics/summary funnel includes three_months in correct order",
+    "GET /api/analytics/summary?pipeline_type=technician works correctly",
+    "GET /api/admin/cleanup-preview - CEO can access, HR gets 403",
+    "POST /api/admin/cleanup - HR gets 403 (CEO only)",
+    "GET /api/employees?category=branch filters correctly",
+    "GET /api/employees?category=head_office filters correctly",
+    "/api/campaigns/* routes return 404 (removed)"
+  ],
+  "skipped_tests": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12_features.py",
+    "/app/test_reports/pytest/pytest_iteration12.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Franchise Manager role is in allowed list for manager interview but no user with that role exists in system - forward-compatible, no action needed",
+    "WhatsApp integration returns 400 for offer letters - expected behavior per review request (templates not approved)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_features.py"
+  ],
+  "success_rate": {
+    "backend": "100% (27/27 passed)",
+    "frontend": "N/A (backend only testing requested)"
+  },
+  "seed_data_creation": "Test leads created with TEST_ prefix pattern for pipeline tests, cleaned up after each test",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 12 tested all major features from the Feb 2026 restructure: three_months pipeline stage, dashboard lead_split with HO/Franchise counts, hold transition requirements, Hold→Selected bug fix, manager_interview manager_id requirement, offer letters creation, design requests RBAC, tasks any-user-assign, manager interview role gating (403 for non-managers), analytics funnel with three_months, admin cleanup CEO-only restriction, employees category filter, and campaigns removal. All tests passed. WhatsApp returns 400 for offer letters which is expected (templates not approved on 11za).",
+  "rca_of_the_issue": null,
+  "verified_features": {
+    "dashboard_lead_split": {
+      "ho_total": "✓ Returns count of HO leads",
+      "ho_today": "✓ Returns count of HO leads created today",
+      "franchise_total": "✓ Returns count of Franchise/technician leads",
+      "franchise_today": "✓ Returns count of Franchise leads created today",
+      "three_months_due": "✓ Returns count of leads in three_months stage past due date",
+      "date_filters": "✓ days, date_from, date_to filters work correctly"
+    },
+    "pipeline_stages": {
+      "three_months": "✓ New stage between selected and joined",
+      "legacy_removed": "✓ No nurture/awaiting_interview/interview_cleared"
+    },
+    "hold_transition": {
+      "requires_hold_reason": "✓ 400 if hold_reason missing",
+      "hold_to_selected_bug_fix": "✓ Works after HR interview submitted"
+    },
+    "manager_interview": {
+      "requires_manager_id": "✓ 400 if manager_id missing",
+      "sets_assigned_manager": "✓ lead.assigned_manager_id set correctly",
+      "role_gating": "✓ 403 for Sr HR, Marketing Coordinator; 200 for Managers/CEO/HR"
+    },
+    "three_months_stage": {
+      "creates_offer_letter": "✓ Record created with lead_id, role, branch_name, sent_at, whatsapp_status",
+      "sets_dates": "✓ three_months_start_date and three_months_due_date (90 days) set"
+    },
+    "design_requests": {
+      "any_user_create": "✓ Franchise Executive can create",
+      "rbac_view": "✓ CEO/HR/Designer see all, others see own",
+      "owner_cannot_change_status": "✓ Status update ignored for owner",
+      "designer_can_change_status": "✓ Designer can update status"
+    },
+    "tasks": {
+      "any_user_assign": "✓ Franchise Executive can assign to anyone",
+      "assignable_users": "✓ Returns all active users"
+    },
+    "admin_cleanup": {
+      "ceo_only": "✓ HR gets 403 for both preview and cleanup",
+      "preview_works": "✓ Returns counts of collections to be deleted"
+    },
+    "employees_filter": {
+      "category_branch": "✓ Filters correctly",
+      "category_head_office": "✓ Filters correctly"
+    },
+    "campaigns_removed": {
+      "routes_404": "✓ /api/campaigns/* returns 404"
+    }
+  }
+}

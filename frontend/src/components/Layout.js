@@ -11,15 +11,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   LayoutDashboard, Building2, Briefcase, Users, CheckSquare,
   UserCheck, Star, UserCog, LogOut, Menu, ChevronRight, ScrollText,
-  MessageSquare, Bell, Image, Megaphone, BarChart3, MessageCircleHeart
+  MessageSquare, Bell, Image, BarChart3, MessageCircleHeart, Database,
+  Wrench, Building
 } from 'lucide-react';
 
 const CEO_HR = ["CEO", "HR"];
-const ALL_ROLES = [
-  "CEO","HR","Marketing Manager","Operations Manager",
-  "Sales Manager","Accounts Manager",
-  "Sr HR","Jr HR","Marketing Coordinator","Graphic Designer","Franchise Executive"
-];
 
 function getNavItems(role) {
   const isCeoHr = CEO_HR.includes(role);
@@ -27,20 +23,26 @@ function getNavItems(role) {
   const isSrJrHR = ["Sr HR","Jr HR"].includes(role);
   const isFDE = role === "Franchise Executive";
   const isDesigner = role === "Graphic Designer";
-  const isMktgCoord = role === "Marketing Coordinator";
 
   const items = [];
   items.push({ path: '/', label: 'Dashboard', icon: LayoutDashboard });
   items.push({ path: '/chat', label: 'Chat', icon: MessageSquare });
 
-  // Branches: visible to ALL roles (view-only for Mktg Coord/Designer/FDE)
+  // Branches: visible to ALL roles
   items.push({ path: '/branches', label: 'Branches', icon: Building2 });
   if (isCeoHr || isManager) items.push({ path: '/jobs', label: 'Jobs', icon: Briefcase });
-  if (isCeoHr || isSrJrHR || isFDE || isManager) items.push({ path: '/leads', label: 'Leads', icon: Users });
+
+  // Split leads menu (only to those who can see leads)
+  if (isCeoHr || isSrJrHR || isManager) items.push({ path: '/leads/head-office', label: 'Head Office Leads', icon: Building });
+  if (isCeoHr || isSrJrHR || isFDE || isManager) items.push({ path: '/leads/franchise', label: 'Franchise Leads', icon: Wrench });
+
   if (isCeoHr || isSrJrHR || isDesigner) items.push({ path: '/posts', label: 'Post Panel', icon: Image });
-  if (isCeoHr || isMktgCoord) items.push({ path: '/campaigns', label: 'Campaigns', icon: Megaphone });
+
   items.push({ path: '/tasks', label: 'Task Manager', icon: CheckSquare });
-  if (isCeoHr) items.push({ path: '/employees', label: 'Employees', icon: UserCheck });
+
+  // Database (Employee history): CEO/HR/Managers
+  if (isCeoHr || isManager) items.push({ path: '/database', label: 'Database', icon: Database });
+
   if (isCeoHr || isManager) items.push({ path: '/performance', label: 'Performance', icon: Star });
   if (isCeoHr || isManager) items.push({ path: '/analytics', label: 'Analytics', icon: BarChart3 });
   if (isCeoHr) items.push({ path: '/feedback-submissions', label: 'Feedback', icon: MessageCircleHeart });

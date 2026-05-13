@@ -10,7 +10,7 @@ from auth_utils import (
 from routes.notifications import create_notification
 import uuid
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter()
 
@@ -54,6 +54,8 @@ async def list_leads(
     is_technician: Optional[bool] = None,
     job_id: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     query = {}
@@ -67,6 +69,13 @@ async def list_leads(
         query["is_technician"] = is_technician
     if job_id:
         query["job_id"] = job_id
+    if date_from or date_to:
+        date_q = {}
+        if date_from:
+            date_q["$gte"] = date_from
+        if date_to:
+            date_q["$lte"] = date_to
+        query["created_at"] = date_q
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
@@ -162,6 +171,41 @@ async def _trigger_whatsapp_feedback(lead: dict, reason: str):
         logging.getLogger(__name__).warning(f"WhatsApp dispatch failed: {e}")
 
 
+async def _trigger_offer_letter(lead: dict, current_user: dict):
+    """On three_months → save offer letter record + dispatch WhatsApp offer letter."""
+    try:
+        from services.whatsapp import send_offer_letter
+        job = await db.jobs.find_one({"id": lead.get("job_id")}, {"_id": 0}) if lead.get("job_id") else None
+        branch = None
+        if job and job.get("branch_id"):
+            branch = await db.branches.find_one({"id": job["branch_id"]}, {"_id": 0})
+        role = (job or {}).get("role") or "Position"
+        department = (job or {}).get("department") or ""
+        branch_name = (branch or {}).get("name") or "Head Office"
+        now = datetime.now(timezone.utc).isoformat()
+        offer_id = str(uuid.uuid4())
+        wa_result = await send_offer_letter(lead, role, branch_name)
+        await db.offer_letters.insert_one({
+            "id": offer_id,
+            "lead_id": lead["id"],
+            "candidate_name": lead.get("name"),
+            "candidate_phone": lead.get("phone"),
+            "role": role,
+            "department": department,
+            "branch_name": branch_name,
+            "branch_id": (branch or {}).get("id"),
+            "job_id": lead.get("job_id"),
+            "sent_at": now,
+            "sent_by": current_user["id"],
+            "sent_by_name": current_user["name"],
+            "whatsapp_status": wa_result.get("status") if isinstance(wa_result, dict) else None,
+            "whatsapp_result": wa_result if isinstance(wa_result, dict) else None,
+        })
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Offer letter dispatch failed: {e}")
+
+
 @router.post("/{lead_id}/transition")
 async def transition_lead(
     lead_id: str, data: StageTransition, current_user: dict = Depends(get_current_user)
@@ -186,7 +230,7 @@ async def transition_lead(
 
     # Technicians do not have manager_interview
     if is_tech and to_stage == "manager_interview":
-        raise HTTPException(status_code=400, detail="Technician pipeline has no Manager Interview stage")
+        raise HTTPException(status_code=400, detail="Franchise pipeline has no Manager Interview stage")
 
     # Validate required form fields for the target stage
     required_fields = STAGE_FORM_REQUIREMENTS.get(to_stage, [])
@@ -205,62 +249,72 @@ async def transition_lead(
     elif to_stage in ("rejected", "dead"):
         new_previous = lead.get("previous_stage")
     else:
-        # Linear stage — validate order for this pipeline type
+        # Linear stage — for resuming from HOLD, allow any forward stage
         linear = get_pipeline_stages(is_tech)
         order = get_stage_order(is_tech)
 
-        # If resuming from hold: allow moving back to previous_stage OR forward by one from previous_stage
-        effective_current = current_stage
-        if current_stage == "hold":
-            prev = lead.get("previous_stage") or "new_lead"
-            effective_current = prev
-        # legacy alias support
-        if effective_current == "move_ahead":
-            effective_current = "selected"
-
-        if effective_current not in order:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Current stage '{effective_current}' is not valid for this pipeline",
-            )
         if to_stage not in order:
             raise HTTPException(
                 status_code=400,
                 detail=f"Stage '{to_stage}' is not valid for this pipeline",
             )
-        cur_idx = order[effective_current]
-        tgt_idx = order[to_stage]
-        if tgt_idx != cur_idx + 1:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot skip stages. Next stage must be '{linear[cur_idx + 1] if cur_idx + 1 < len(linear) else 'N/A'}'.",
-            )
 
-        # HARD BLOCKS (questionnaire enforcement)
-        if to_stage == "manager_interview":
-            # HO only — must have HR interview submitted
-            hr_done = await db.interviews.find_one({"lead_id": lead_id, "round": "hr"})
-            if not hr_done:
+        # Resuming from hold: allow ANY linear stage (forward from previous), not just one-step
+        if current_stage == "hold":
+            prev = lead.get("previous_stage") or "new_lead"
+            if prev == "move_ahead":
+                prev = "selected"
+            prev_idx = order.get(prev, 0)
+            tgt_idx = order[to_stage]
+            # Allow resuming to prev_stage or any forward stage (so Hold→Selected works)
+            if tgt_idx < prev_idx:
                 raise HTTPException(
                     status_code=400,
-                    detail="HR interview questionnaire must be submitted before Manager Interview",
+                    detail=f"Cannot move backward. Hold was paused at '{linear[prev_idx]}'.",
                 )
-        if to_stage == "selected":
-            # Must have prior round submitted
-            if is_tech:
+        else:
+            effective_current = current_stage
+            if effective_current == "move_ahead":
+                effective_current = "selected"
+            if effective_current not in order:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Current stage '{effective_current}' is not valid for this pipeline",
+                )
+            cur_idx = order[effective_current]
+            tgt_idx = order[to_stage]
+            if tgt_idx != cur_idx + 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot skip stages. Next stage must be '{linear[cur_idx + 1] if cur_idx + 1 < len(linear) else 'N/A'}'.",
+                )
+
+        # HARD BLOCKS (questionnaire enforcement) — skip if resuming from hold (form already done before)
+        if current_stage != "hold":
+            if to_stage == "manager_interview":
+                # HO only — must have HR interview submitted
                 hr_done = await db.interviews.find_one({"lead_id": lead_id, "round": "hr"})
                 if not hr_done:
                     raise HTTPException(
                         status_code=400,
-                        detail="HR interview questionnaire must be submitted before Selected",
+                        detail="HR interview questionnaire must be submitted before Manager Interview",
                     )
-            else:
-                mgr_done = await db.interviews.find_one({"lead_id": lead_id, "round": "manager"})
-                if not mgr_done:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Manager interview questionnaire must be submitted before Selected",
-                    )
+            if to_stage == "selected":
+                # Must have prior round submitted
+                if is_tech:
+                    hr_done = await db.interviews.find_one({"lead_id": lead_id, "round": "hr"})
+                    if not hr_done:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="HR interview questionnaire must be submitted before Selected",
+                        )
+                else:
+                    mgr_done = await db.interviews.find_one({"lead_id": lead_id, "round": "manager"})
+                    if not mgr_done:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Manager interview questionnaire must be submitted before Selected",
+                        )
 
         new_previous = None  # reset previous_stage once back on linear track
 
@@ -287,6 +341,19 @@ async def transition_lead(
             "scheduled_by_name": current_user["name"],
             "scheduled_at": datetime.now(timezone.utc).isoformat(),
         }
+    if to_stage == "manager_interview":
+        manager_id = data.form_data.get("manager_id")
+        if manager_id:
+            mgr = await db.users.find_one({"id": manager_id}, {"_id": 0, "name": 1, "role": 1})
+            update["assigned_manager_id"] = manager_id
+            update["assigned_manager_name"] = mgr["name"] if mgr else ""
+            update["assigned_manager_role"] = mgr["role"] if mgr else ""
+    if to_stage == "three_months":
+        now = datetime.now(timezone.utc)
+        update["three_months_start_date"] = now.isoformat()
+        update["three_months_due_date"] = (now + timedelta(days=90)).isoformat()
+    if to_stage == "joined":
+        update["joined_at"] = datetime.now(timezone.utc).isoformat()
 
     # Lock interview records once lead has moved past decision point
     if to_stage in ("joined", "rejected", "dead"):
@@ -316,6 +383,20 @@ async def transition_lead(
     if to_stage in ("rejected", "dead"):
         reason = data.form_data.get("rejection_reason") or data.form_data.get("dead_reason", "")
         await _trigger_whatsapp_feedback(lead, reason)
+
+    # On Manager Interview → notify the assigned manager
+    if to_stage == "manager_interview":
+        mgr_id = data.form_data.get("manager_id")
+        if mgr_id and mgr_id != current_user["id"]:
+            await create_notification(
+                mgr_id,
+                f"Manager Interview Assigned: {lead.get('name')}",
+                f"You have been assigned to interview {lead.get('name')}. Please review and conduct the interview.",
+            )
+
+    # On Three Months → trigger offer letter via WhatsApp + DB record
+    if to_stage == "three_months":
+        await _trigger_offer_letter(lead, current_user)
 
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     return lead
