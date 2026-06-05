@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Phone, ChevronRight, Search, Building, Wrench, Eye } from 'lucide-react';
+import { Plus, Phone, ChevronRight, Search, Building, Wrench, Eye, Trash2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 const HO_STAGES = [
@@ -59,6 +59,7 @@ export default function LeadsPipelinePage({ pipelineMode }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [holdDialog, setHoldDialog] = useState({ open: false, lead: null, reason: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, lead: null });
   const [form, setForm] = useState({
     name: '', phone: '', email: '', location_city: '', location_area: '',
     source: 'manual', assigned_to: '', is_technician: isTechnicianMode, job_id: '',
@@ -218,6 +219,12 @@ export default function LeadsPipelinePage({ pipelineMode }) {
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3" />{lead.phone}</span>
                               {lead.is_technician && <Badge variant="outline" className="text-xs px-1.5 py-0 text-blue-700 border-blue-200">Franchise</Badge>}
+                              {lead.candidate_form_status === 'completed' && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-700 border-emerald-200" data-testid={`form-completed-${lead.id}`}>Form ✓</Badge>
+                              )}
+                              {lead.candidate_form_status === 'sent' && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-200" data-testid={`form-sent-${lead.id}`}>Form Sent</Badge>
+                              )}
                               {lead.hold_reason && s.value === 'hold' && (
                                 <Badge variant="outline" className="text-xs px-1.5 py-0 text-orange-700 border-orange-200">Hold: {lead.hold_reason.slice(0, 30)}</Badge>
                               )}
@@ -239,6 +246,14 @@ export default function LeadsPipelinePage({ pipelineMode }) {
                               Hold
                             </button>
                           )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteDialog({ open: true, lead }); }}
+                            className="text-rose-500 hover:text-rose-700"
+                            title="Delete lead"
+                            data-testid={`delete-lead-${lead.id}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }}
                             className="text-slate-400 hover:text-blue-700 transition-colors"
@@ -320,6 +335,36 @@ export default function LeadsPipelinePage({ pipelineMode }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} className="bg-blue-700 hover:bg-blue-800" data-testid="save-lead-button">Add Lead</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lead Confirmation */}
+      <Dialog open={deleteDialog.open} onOpenChange={(v) => !v && setDeleteDialog({ open: false, lead: null })}>
+        <DialogContent className="max-w-md" data-testid="delete-lead-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-rose-600">Delete Lead?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            Are you sure you want to delete <strong>{deleteDialog.lead?.name}</strong>?
+            This will move it to <strong>Deleted Leads</strong>. A CEO/HR can restore it later.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, lead: null })} data-testid="cancel-delete-lead-button">Cancel</Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              data-testid="confirm-delete-lead-button"
+              onClick={async () => {
+                try {
+                  await API.post(`/leads/${deleteDialog.lead.id}/delete`);
+                  toast.success('Lead deleted');
+                  setDeleteDialog({ open: false, lead: null });
+                  fetchData();
+                } catch (err) {
+                  toast.error(err.response?.data?.detail || 'Failed to delete');
+                }
+              }}
+            >Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -15,6 +15,8 @@ import UsersPage from '@/pages/UsersPage';
 import EmployeesPage from '@/pages/EmployeesPage';
 import DatabasePage from '@/pages/DatabasePage';
 import DesignationsPage from '@/pages/DesignationsPage';
+import DeletedLeadsPage from '@/pages/DeletedLeadsPage';
+import CandidateFormPage from '@/pages/CandidateFormPage';
 import AuditPage from '@/pages/AuditPage';
 import ChatPage from '@/pages/ChatPage';
 import PostPanelPage from '@/pages/PostPanelPage';
@@ -51,6 +53,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<AuthRoute />} />
           <Route path="/feedback/:token" element={<FeedbackPage />} />
+          <Route path="/candidate-form/:token" element={<CandidateFormPage />} />
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/branches" element={<BranchesPage />} />
@@ -66,6 +69,7 @@ function App() {
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/database" element={<DatabasePage />} />
             <Route path="/designations" element={<DesignationsPage />} />
+            <Route path="/leads/deleted" element={<DeletedLeadsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/posts" element={<PostPanelPage />} />

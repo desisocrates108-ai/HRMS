@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 15 — Backend + Frontend testing of 3 features: (1) Soft Delete Lead + Deleted Leads page, (2) Candidate Information Form (public token + uploads + download), (3) Manager Round HR-block + assigned-manager + CEO override. Backend pytest: 15/15 passed. Frontend: All critical data-testids and integrations verified end-to-end as CEO; one minor missing testid found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/candidate-forms/{lead_id}/send", "issue": "Permission gate has dead branch — outer `if current_user.get('role') not in CEO_HR_ROLES and 'HR' not in (current_user.get('role') or '')` then re-checks same condition. Logic still works (CEO/HR allowed, non-HR roles like Sr HR/Jr HR are NOT in CEO_HR_ROLES and would still be allowed because they contain 'HR' substring — possibly intentional). Recommend cleaner role check via role_lower.split() == HR family for clarity."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DeletedLeadsPage", "issue": "Permanent Delete button is visible and labelled correctly, but does NOT carry data-testid='permanent-delete-lead-{id}'. Only `restore-lead-{id}` testid was found. Review request explicitly asks for Permanent Delete to have a testid.", "selector": "[data-testid^=\"permanent-delete-lead-\"] returns 0 elements", "priority": "MEDIUM"},
+      {"component": "LeadsPipelinePage (lead cards)", "issue": "Form-status badges show as visible text ('Form Sent' / 'Form ✓') on cards, but no `[data-testid^=\"form-status-badge-\"]` element is rendered on the pipeline list. Review request mentions form-status badges per card. They render correctly on the LeadDetailPage (form-status-badge-sent / form-status-badge-completed present), just missing on the list-card-level.", "selector": "card-level [data-testid^=\"form-status-badge\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "CEO login returns JWT",
+    "POST /api/leads creates a lead",
+    "POST /api/leads/{id}/delete soft-deletes; GET /api/leads excludes deleted; ?include_deleted=true includes them; /api/leads/deleted returns only deleted",
+    "POST /api/leads/{id}/restore brings it back to default list",
+    "DELETE /api/leads/{id} returns 400 if not soft-deleted first; succeeds after soft delete",
+    "POST /api/candidate-forms/{lead_id}/send returns {token, public_url, whatsapp:{dispatched:false, reason: 'WhatsApp not configured — share link manually'}}; lead.candidate_form_status='sent'",
+    "GET /api/candidate-forms/form/{token} (public) returns full schema (personal/education/employment/interview/documents) + candidate prefill; bad token → 404; after submission → 410",
+    "POST /api/candidate-forms/form/{token} multipart with answers + declaration=true + resume file succeeds, persists submission, updates lead.candidate_form_status='completed' and candidate_form_data/documents",
+    "POST with declaration=false → 400; missing required (full_name/mobile/email) → 400",
+    "GET /api/candidate-forms/{lead_id} (auth) returns {status,submission,pending_public_url}",
+    "GET /api/candidate-forms/{lead_id}/document/resume downloads the file with correct filename header; unknown field → 400; missing doc → 404",
+    "Manager Round: HR user (role='Sr HR') gets 403 with 'HR' in detail; non-assigned Operations Manager gets 403; assigned Manager submits 200; CEO override 200",
+    "HR Round still works for HR user (200)",
+    "FRONTEND: Sidebar shows 'Deleted Leads' for CEO; /leads/deleted renders 3-row table with Restore (testid `restore-lead-{id}`) + Permanent buttons",
+    "FRONTEND: /leads/head-office shows delete-lead-{id} trash icon on each card; clicking opens delete-lead-dialog with cancel-delete-lead-button + confirm-delete-lead-button",
+    "FRONTEND: LeadDetailPage toolbar: send-candidate-form-button + delete-lead-button; clicking Send opens send-form-dialog → confirm-send-form-button; after sending, copy-link-button + open-whatsapp-button visible; 'WhatsApp not configured' message shown; form-status-badge-sent appears; for already-submitted lead: form-status-badge-completed + candidate-form-card + download-doc-resume present"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_features.py",
+    "/app/test_reports/pytest/pytest_iteration15.xml"
+  ],
+  "action_items": [
+    "Add data-testid='permanent-delete-lead-{id}' to the Permanent Delete button on DeletedLeadsPage.js for parity with review request and to enable automated regression of the hard-delete confirm flow",
+    "(Optional/Low) Add data-testid='form-status-badge-{status}' (or similar) inside LeadsPipelinePage lead cards to make the per-card form-status visible to automation; visually they already render as 'Form Sent' / 'Form ✓' text but lack a stable testid",
+    "(Optional/Backend) Simplify the role gate in routes/candidate_forms.py send_candidate_form — the current nested `if` repeats the same condition and can mislead future readers"
+  ],
+  "critical_code_review_comments": [
+    "routes/candidate_forms.py:103-106 — dead/duplicated permission check; refactor for clarity.",
+    "routes/candidate_forms.py — uses `secrets.token_urlsafe(24)` (good entropy ~32 chars). Storage path is relative to /app/backend (validated). Consider rate-limiting POST /form/{token} to prevent abuse.",
+    "routes/interviews.py:151 — HR role check uses both an explicit set and `'hr' in role_lower.split()`. Good — catches 'Sr HR', 'Jr HR', 'HR'. Works.",
+    "Public form returns 410 after submission — correct UX (one-shot link).",
+    "Frontend DeletedLeadsPage uses table layout (good for CEO/HR review); restore + permanent actions visible. Just missing one data-testid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15_features.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15 pytest)", "frontend": "~95% (all primary flows verified; 1 missing testid)"},
+  "test_credentials": "admin@servall.com / ServallAdmin@123 (CEO) from /app/memory/test_credentials.md. Tests dynamically create TEST_hr_* (Sr HR), TEST_mgr_* (Operations Manager), TEST_mgr2_* (Operations Manager) users.",
+  "seed_data_creation": "Backend tests created multiple TEST_* leads (some soft-deleted, some restored, some hard-deleted, some with completed candidate forms with resume PDFs), 1 HR user, 2 Operations Manager users. Files saved under /app/backend/uploads/candidates/{lead_id}/.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests are at /app/backend/tests/test_iteration15_features.py and require REACT_APP_BACKEND_URL env (export before pytest). All 15 pass. To run manager-round tests, the harness creates 'Operations Manager' (a valid role) and 'Sr HR' (a valid role) users via /api/users — 'Manager' is NOT a valid role in ROLE_HIERARCHY. The transition flow to manager_interview stage REQUIRES (a) qualified stage form fields {experience, location_confirmation, salary_expectation, relocation_preference}, (b) hr_interview stage with full interview form, (c) HR interview questionnaire submission (10 ratings 1-5), then (d) manager_interview transition with manager_id in form_data. Storage path for uploads is relative to /app/backend (e.g., 'uploads/candidates/{lead_id}/resume_xxx.pdf').",
+  "rca of the issue": "No blocking issues. Two minor frontend testid gaps documented above — the underlying functionality works (Permanent Delete button exists and is clickable; form-status text shows on cards) but automation hooks are incomplete in two spots."
+}

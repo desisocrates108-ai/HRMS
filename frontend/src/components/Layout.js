@@ -36,6 +36,7 @@ function getNavItems(role) {
   // Split leads menu (only to those who can see leads)
   if (isCeoHr || isSrJrHR || isManager) items.push({ path: '/leads/head-office', label: 'Head Office Leads', icon: Building });
   if (isCeoHr || isSrJrHR || isFDE || isManager) items.push({ path: '/leads/franchise', label: 'Franchise Leads', icon: Wrench });
+  if (isCeoHr) items.push({ path: '/leads/deleted', label: 'Deleted Leads', icon: ScrollText });
 
   if (isCeoHr || isSrJrHR || isDesigner) items.push({ path: '/posts', label: 'Post Panel', icon: Image });
 

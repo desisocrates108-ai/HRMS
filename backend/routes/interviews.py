@@ -141,9 +141,31 @@ async def submit_manager_round(
     data: InterviewSubmission,
     current_user: dict = Depends(get_current_user),
 ):
-    # Only manager-level users (or CEO/HR for override) may submit manager round.
-    role = current_user.get("role", "")
-    allowed = {"CEO", "HR", "Marketing Manager", "Operations Manager", "Sales Manager", "Accounts Manager", "Franchise Manager"}
-    if role not in allowed:
-        raise HTTPException(status_code=403, detail="Only Managers (or CEO/HR) can submit Manager review")
+    """Manager Round — only the assigned manager (or CEO override) may submit.
+    HR users are EXPLICITLY blocked from submitting Manager Rating/Feedback.
+    """
+    role = current_user.get("role", "") or ""
+    role_lower = role.lower().strip()
+
+    # HR is strictly blocked, no exception
+    if role_lower in {"hr", "sr hr", "jr hr", "hr admin", "hr executive"} or "hr" in role_lower.split():
+        raise HTTPException(
+            status_code=403,
+            detail="HR users cannot submit Manager evaluation. Only the assigned Manager (or CEO override) can submit this round.",
+        )
+
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0, "assigned_manager_id": 1, "is_technician": 1})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    assigned_mgr_id = lead.get("assigned_manager_id")
+    is_assigned = assigned_mgr_id and assigned_mgr_id == current_user["id"]
+    is_ceo = role_lower in {"ceo", "super admin", "super_admin"}
+
+    if not (is_assigned or is_ceo):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the assigned Manager (or CEO override) can submit Manager evaluation.",
+        )
+
     return await _submit_round(lead_id, "manager", MANAGER_ROUND_CRITERIA, data, current_user)

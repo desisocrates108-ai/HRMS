@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Phone, Mail, MapPin, ChevronRight, Star as StarIcon, Pause, PlayCircle, FileText, Heart, Upload } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, ChevronRight, Star as StarIcon, Pause, PlayCircle, FileText, Heart, Upload, Trash2, Send, Copy, ExternalLink, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import InterviewFormDialog from '@/components/InterviewFormDialog';
 import { StarRating } from '@/components/StarRating';
@@ -50,6 +50,20 @@ const INTERVIEW_MODES = ['in_person', 'video', 'phone'];
 
 const HO_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'manager_interview', 'selected', 'three_months', 'joined'];
 const TECH_LINEAR = ['new_lead', 'qualified', 'hr_interview', 'selected', 'three_months', 'joined'];
+
+function FormStatusBadge({ status }) {
+  const map = {
+    not_sent: { label: 'Form Not Sent', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+    sent: { label: 'Form Sent', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    completed: { label: 'Form Completed', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  };
+  const s = map[status] || map.not_sent;
+  return (
+    <Badge variant="outline" className={`text-[10px] ${s.cls}`} data-testid={`form-status-badge-${status}`}>
+      {s.label}
+    </Badge>
+  );
+}
 
 function getNextStage(current, isTech) {
   const order = isTech ? TECH_LINEAR : HO_LINEAR;
@@ -94,20 +108,27 @@ export default function LeadDetailPage() {
   const [convertForm, setConvertForm] = useState({ joining_date: '', role: '', branch_id: '', department: '', category: '', employment_type: '' });
   const [convertOpen, setConvertOpen] = useState(false);
   const [interviewDialog, setInterviewDialog] = useState({ open: false, round: 'hr' });
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [sendFormOpen, setSendFormOpen] = useState(false);
+  const [formStatus, setFormStatus] = useState({ status: 'not_sent' });
+  const [sendingForm, setSendingForm] = useState(false);
+  const [sendFormResult, setSendFormResult] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [leadRes, historyRes, callsRes, ivRes, usersRes] = await Promise.all([
+      const [leadRes, historyRes, callsRes, ivRes, usersRes, formRes] = await Promise.all([
         API.get(`/leads/${id}`),
         API.get(`/leads/${id}/history`),
         API.get(`/leads/${id}/calls`),
         API.get(`/interviews/${id}`),
         API.get('/users'),
+        API.get(`/candidate-forms/${id}`).catch(() => ({ data: { status: 'not_sent' } })),
       ]);
       setLead(leadRes.data);
       setHistory(historyRes.data);
       setCalls(callsRes.data);
       setInterviews(ivRes.data);
+      setFormStatus(formRes.data);
       const mgrRoles = ['Marketing Manager', 'Operations Manager', 'Sales Manager', 'Accounts Manager'];
       setManagers((usersRes.data || []).filter(u => mgrRoles.includes(u.role)));
     } catch { toast.error('Failed to load lead details'); }
@@ -240,15 +261,61 @@ export default function LeadDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2 mt-3 text-xs text-slate-400 flex-wrap">
             <span>Source: {lead.source}</span>
             <span>Calls: {lead.total_calls}</span>
             {lead.last_call_date && <span>Last call: {new Date(lead.last_call_date).toLocaleDateString()}</span>}
             {lead.hold_reason && <span className="text-orange-600">Hold: {lead.hold_reason}</span>}
             {(lead.rejection_reason || lead.dead_reason) && <span className="text-rose-600">Reason: {lead.rejection_reason || lead.dead_reason}</span>}
+            <FormStatusBadge status={formStatus.status} />
           </div>
         </CardContent>
       </Card>
+
+      {/* Candidate Form Submission Card */}
+      {formStatus.status === 'completed' && formStatus.submission && (
+        <Card className="border-slate-200 shadow-none" data-testid="candidate-form-card">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" /> Candidate Information Form
+            </CardTitle>
+            <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">Submitted {new Date(formStatus.completed_at).toLocaleDateString()}</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              {Object.entries(formStatus.submission.answers || {}).slice(0, 12).map(([k, v]) => (
+                v ? <div key={k}><span className="text-slate-400 capitalize">{k.replace(/_/g, ' ')}:</span> <span className="text-slate-700">{String(v)}</span></div> : null
+              ))}
+            </div>
+            {Object.keys(formStatus.submission.documents || {}).length > 0 && (
+              <div className="border-t border-slate-100 pt-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Documents</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(formStatus.submission.documents).map(([field, doc]) => (
+                    <Button
+                      key={field}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      data-testid={`download-doc-${field}`}
+                      onClick={async () => {
+                        try {
+                          const res = await API.get(`/candidate-forms/${id}/document/${field}`, { responseType: 'blob' });
+                          const url = window.URL.createObjectURL(new Blob([res.data]));
+                          const a = document.createElement('a'); a.href = url; a.download = doc.filename || field;
+                          document.body.appendChild(a); a.click(); a.remove();
+                        } catch { toast.error(`Failed to download ${field}`); }
+                      }}
+                    >
+                      <FileText className="w-3 h-3 mr-1" /> {field.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Interview Summary */}
       {(lead.hr_interview_details || lead.manager_interview_details) && (
@@ -308,18 +375,25 @@ export default function LeadDetailPage() {
             <StarIcon className="w-4 h-4 mr-1" /> HR Round Form {interviews.hr && '✓'}
           </Button>
         )}
-        {/* Manager Round form (HO only). Only managers (or CEO/HR override) may submit. */}
+        {/* Manager Round form (HO only). HR is BLOCKED. Only assigned Manager or CEO may submit. */}
         {!isTech && ['manager_interview', 'selected', 'three_months', 'move_ahead'].includes(lead.current_stage) && (() => {
-          const canFill = ['CEO', 'HR', 'Marketing Manager', 'Operations Manager', 'Sales Manager', 'Accounts Manager'].includes(currentUser?.role);
+          const role = (currentUser?.role || '').toLowerCase();
+          const isHr = role === 'hr' || role.startsWith('sr hr') || role.startsWith('jr hr') || role.includes('hr');
+          const isAssignedManager = lead.assigned_manager_id && lead.assigned_manager_id === currentUser?.id;
+          const isCeo = role === 'ceo' || role === 'super admin';
+          const canFill = (isAssignedManager || isCeo) && !isHr; // HR strictly cannot fill
+          // HR can VIEW once a submission exists, but cannot fill.
+          const canView = isHr || interviews.manager;
           return (
             <Button
               onClick={() => setInterviewDialog({ open: true, round: 'manager' })}
               className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
-              disabled={!canFill && !interviews.manager}
-              title={!canFill ? 'Only the assigned Manager (or CEO/HR) can fill this review' : ''}
+              disabled={!canFill && !canView}
+              title={!canFill ? (isHr ? 'HR cannot submit Manager evaluation — only the assigned Manager (or CEO) can.' : 'Only the assigned Manager (or CEO override) can fill this form') : ''}
               data-testid="open-manager-interview-button"
             >
-              <StarIcon className="w-4 h-4 mr-1" /> Manager Round {interviews.manager ? '· View' : (canFill ? 'Form' : '· Locked')} {interviews.manager && '✓'}
+              {!canFill && canView ? <Lock className="w-4 h-4 mr-1" /> : <StarIcon className="w-4 h-4 mr-1" />}
+              Manager Round {interviews.manager ? '· View' : (canFill ? 'Form' : '· View Only')} {interviews.manager && '✓'}
             </Button>
           );
         })()}
@@ -357,6 +431,30 @@ export default function LeadDetailPage() {
         <Button variant="outline" onClick={() => setCallDialogOpen(true)} data-testid="add-call-button">
           <Phone className="w-4 h-4 mr-1" /> Log Call
         </Button>
+        <Button
+          variant="outline"
+          className="text-blue-700 hover:text-blue-800"
+          onClick={() => setSendFormOpen(true)}
+          data-testid="send-candidate-form-button"
+        >
+          <Send className="w-4 h-4 mr-1" /> Send Candidate Form
+        </Button>
+        {(() => {
+          const role = (currentUser?.role || '').toLowerCase();
+          const isCeoHr = role === 'ceo' || role.includes('hr');
+          const isOwner = currentUser?.id === lead.assigned_to || currentUser?.id === lead.created_by;
+          if (!isCeoHr && !isOwner) return null;
+          return (
+            <Button
+              variant="outline"
+              className="text-rose-600 hover:text-rose-700"
+              onClick={() => setDeleteConfirm(true)}
+              data-testid="delete-lead-button"
+            >
+              <Trash2 className="w-4 h-4 mr-1" /> Delete Lead
+            </Button>
+          );
+        })()}
         {(lead.current_stage === 'selected' || lead.current_stage === 'three_months' || lead.current_stage === 'move_ahead' || lead.current_stage === 'joined' || lead.current_stage === 'interview_cleared') && (
           <Button variant="outline" className="text-emerald-600" onClick={() => setConvertOpen(true)} data-testid="convert-employee-button">Convert to Employee</Button>
         )}
@@ -668,6 +766,108 @@ export default function LeadDetailPage() {
             <Button variant="outline" onClick={() => setMedicalOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveMedical} className="bg-blue-700 hover:bg-blue-800" data-testid="save-medical-button">Save</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lead Confirmation */}
+      <Dialog open={deleteConfirm} onOpenChange={setDeleteConfirm}>
+        <DialogContent className="max-w-md" data-testid="delete-lead-dialog">
+          <DialogHeader><DialogTitle className="font-heading text-rose-600">Delete Lead?</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">
+            Are you sure you want to delete <strong>{lead?.name}</strong>?
+            This will move the lead to <strong>Deleted Leads</strong>. A CEO can restore it later.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(false)} data-testid="cancel-delete-button">Cancel</Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              data-testid="confirm-delete-button"
+              onClick={async () => {
+                try {
+                  await API.post(`/leads/${id}/delete`);
+                  toast.success('Lead deleted');
+                  setDeleteConfirm(false);
+                  navigate(lead.is_technician ? '/leads/franchise' : '/leads/head-office');
+                } catch (err) {
+                  toast.error(err.response?.data?.detail || 'Failed to delete');
+                }
+              }}
+            >Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Candidate Form Dialog */}
+      <Dialog open={sendFormOpen} onOpenChange={(v) => { setSendFormOpen(v); if (!v) setSendFormResult(null); }}>
+        <DialogContent className="max-w-md" data-testid="send-form-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <Send className="w-4 h-4" /> Send Candidate Information Form
+            </DialogTitle>
+          </DialogHeader>
+          {!sendFormResult ? (
+            <>
+              <p className="text-sm text-slate-600">
+                We'll generate a secure form link and try to send it to <strong>{lead?.phone}</strong> via WhatsApp.
+                If WhatsApp isn't configured, you'll get a copy-paste link.
+              </p>
+              {formStatus.status === 'sent' && formStatus.pending_public_url && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  A form was already sent. Sending again will reuse the existing link.
+                </p>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSendFormOpen(false)}>Cancel</Button>
+                <Button
+                  disabled={sendingForm}
+                  className="bg-blue-700 hover:bg-blue-800"
+                  data-testid="confirm-send-form-button"
+                  onClick={async () => {
+                    setSendingForm(true);
+                    try {
+                      const res = await API.post(`/candidate-forms/${id}/send`);
+                      setSendFormResult(res.data);
+                      toast.success(res.data.whatsapp?.dispatched ? 'WhatsApp sent!' : 'Link generated — share manually');
+                      fetchData();
+                    } catch (err) {
+                      toast.error(err.response?.data?.detail || 'Failed to send');
+                    } finally { setSendingForm(false); }
+                  }}
+                >{sendingForm ? 'Sending...' : 'Send Form'}</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {sendFormResult.whatsapp?.dispatched ? (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 rounded text-sm text-emerald-800">
+                    ✓ WhatsApp message dispatched to {sendFormResult.candidate_phone}.
+                  </div>
+                ) : (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                    WhatsApp not configured. Share this link with the candidate manually.
+                  </div>
+                )}
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Form Link</Label>
+                <Input value={sendFormResult.public_url} readOnly className="font-mono text-xs" data-testid="form-link-input" />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" data-testid="copy-link-button" onClick={() => { navigator.clipboard.writeText(sendFormResult.public_url); toast.success('Link copied'); }}>
+                    <Copy className="w-3 h-3 mr-1" /> Copy
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" data-testid="open-whatsapp-button" onClick={() => {
+                    const phone = (sendFormResult.candidate_phone || '').replace(/\D/g, '');
+                    const text = encodeURIComponent(`Hi ${sendFormResult.candidate_name || 'Candidate'}, please fill out our information form: ${sendFormResult.public_url}`);
+                    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+                  }}>
+                    <ExternalLink className="w-3 h-3 mr-1" /> WhatsApp Web
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => { setSendFormOpen(false); setSendFormResult(null); }}>Done</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

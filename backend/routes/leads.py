@@ -56,9 +56,10 @@ async def list_leads(
     search: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    include_deleted: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
-    query = {}
+    query = {} if include_deleted else {"deleted": {"$ne": True}}
     if stage:
         query["current_stage"] = stage
     if assigned_to:
@@ -83,6 +84,97 @@ async def list_leads(
         ]
     leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
     return leads
+
+
+@router.get("/deleted")
+async def list_deleted_leads(current_user: dict = Depends(get_current_user)):
+    """List soft-deleted leads. CEO/HR only."""
+    from auth_utils import CEO_HR_ROLES
+    if current_user.get("role") not in CEO_HR_ROLES:
+        raise HTTPException(status_code=403, detail="Only CEO/HR can view deleted leads")
+    leads = await db.leads.find({"deleted": True}, {"_id": 0}).sort("deleted_at", -1).to_list(5000)
+    return leads
+
+
+@router.post("/{lead_id}/delete")
+async def soft_delete_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Soft delete a lead. Allowed: CEO, HR, or lead assignee/creator."""
+    from auth_utils import CEO_HR_ROLES
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.get("deleted"):
+        raise HTTPException(status_code=400, detail="Lead is already deleted")
+    role = current_user.get("role")
+    is_owner = current_user["id"] in (lead.get("assigned_to"), lead.get("created_by"))
+    if role not in CEO_HR_ROLES and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this lead")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {
+            "deleted": True,
+            "deleted_at": now,
+            "deleted_by": current_user["id"],
+            "deleted_by_name": current_user["name"],
+            "updated_at": now,
+        }},
+    )
+    await log_audit(
+        current_user["id"], current_user["name"],
+        "soft_delete", "lead", lead_id,
+        {"name": lead.get("name"), "phone": lead.get("phone")},
+    )
+    return {"success": True, "lead_id": lead_id}
+
+
+@router.post("/{lead_id}/restore")
+async def restore_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Restore a soft-deleted lead. CEO only."""
+    from auth_utils import CEO_HR_ROLES
+    if current_user.get("role") not in CEO_HR_ROLES:
+        raise HTTPException(status_code=403, detail="Only CEO/HR can restore leads")
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.get("deleted"):
+        raise HTTPException(status_code=400, detail="Lead is not deleted")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {
+            "restored_at": now,
+            "restored_by": current_user["id"],
+            "restored_by_name": current_user["name"],
+            "updated_at": now,
+        }, "$unset": {"deleted": "", "deleted_at": "", "deleted_by": "", "deleted_by_name": ""}},
+    )
+    await log_audit(current_user["id"], current_user["name"], "restore", "lead", lead_id, {"name": lead.get("name")})
+    return {"success": True, "lead_id": lead_id}
+
+
+@router.delete("/{lead_id}")
+async def hard_delete_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """Permanently delete a lead (CEO only). Must be soft-deleted first."""
+    from auth_utils import CEO_HR_ROLES
+    if current_user.get("role") not in CEO_HR_ROLES:
+        raise HTTPException(status_code=403, detail="Only CEO can permanently delete leads")
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.get("deleted"):
+        raise HTTPException(status_code=400, detail="Soft-delete the lead first before permanent deletion")
+    # Block if linked to employee (already converted)
+    emp_link = await db.employees.find_one({"lead_id": lead_id}, {"_id": 0, "id": 1})
+    if emp_link:
+        raise HTTPException(status_code=400, detail="Cannot delete: lead is linked to an employee record")
+    await db.leads.delete_one({"id": lead_id})
+    await db.lead_stage_logs.delete_many({"lead_id": lead_id})
+    await db.interviews.delete_many({"lead_id": lead_id})
+    await db.candidate_form_tokens.delete_many({"lead_id": lead_id})
+    await db.candidate_form_submissions.delete_many({"lead_id": lead_id})
+    await log_audit(current_user["id"], current_user["name"], "hard_delete", "lead", lead_id, {"name": lead.get("name")})
+    return {"success": True, "lead_id": lead_id}
 
 
 @router.get("/pipeline-stats")
