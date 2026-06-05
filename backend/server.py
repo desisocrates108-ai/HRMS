@@ -29,6 +29,8 @@ from routes.analytics import router as analytics_router
 from routes.design_requests import router as design_requests_router
 from routes.offer_letters import router as offer_letters_router
 from routes.admin_tools import router as admin_tools_router
+from routes.designations import router as designations_router, seed_default_designations
+from routes.employees import migrate_employees_to_pipeline
 from database import client, db
 
 app = FastAPI(title="Servall Hiring OS", redirect_slashes=False)
@@ -57,6 +59,7 @@ api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytic
 api_router.include_router(design_requests_router, prefix="/design-requests", tags=["DesignRequests"])
 api_router.include_router(offer_letters_router, prefix="/offer-letters", tags=["OfferLetters"])
 api_router.include_router(admin_tools_router, prefix="/admin", tags=["Admin"])
+api_router.include_router(designations_router, prefix="/designations", tags=["Designations"])
 
 
 @api_router.get("/")
@@ -107,6 +110,12 @@ async def startup():
     await db.tasks.create_index("id", unique=True)
     await db.tasks.create_index("assigned_to")
     await db.employees.create_index("id", unique=True)
+    await db.employees.create_index("employee_code")
+    await db.employees.create_index("current_stage")
+    await db.employees.create_index("employee_type")
+    await db.designations.create_index("id", unique=True)
+    await db.designations.create_index("name_lower", unique=True)
+    await db.employee_stage_logs.create_index("employee_id")
     await db.candidate_ratings.create_index("lead_id")
     await db.candidate_ratings.create_index("final_rating")
     await db.audit_logs.create_index("timestamp")
@@ -126,6 +135,9 @@ async def startup():
 
     # Seed admin
     await seed_admin()
+    # Seed default designations + migrate existing employees to pipeline schema
+    await seed_default_designations()
+    await migrate_employees_to_pipeline()
     logger.info("Servall Hiring OS started successfully")
 
 

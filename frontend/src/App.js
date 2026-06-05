@@ -14,6 +14,7 @@ import PerformancePage from '@/pages/PerformancePage';
 import UsersPage from '@/pages/UsersPage';
 import EmployeesPage from '@/pages/EmployeesPage';
 import DatabasePage from '@/pages/DatabasePage';
+import DesignationsPage from '@/pages/DesignationsPage';
 import AuditPage from '@/pages/AuditPage';
 import ChatPage from '@/pages/ChatPage';
 import PostPanelPage from '@/pages/PostPanelPage';
@@ -64,6 +65,7 @@ function App() {
             <Route path="/users" element={<UsersPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/database" element={<DatabasePage />} />
+            <Route path="/designations" element={<DesignationsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/posts" element={<PostPanelPage />} />

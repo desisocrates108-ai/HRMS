@@ -31,6 +31,7 @@ function getNavItems(role) {
   // Branches: visible to ALL roles
   items.push({ path: '/branches', label: 'Branches', icon: Building2 });
   if (isCeoHr || isManager) items.push({ path: '/jobs', label: 'Jobs', icon: Briefcase });
+  if (isCeoHr) items.push({ path: '/designations', label: 'Designations', icon: UserCheck });
 
   // Split leads menu (only to those who can see leads)
   if (isCeoHr || isSrJrHR || isManager) items.push({ path: '/leads/head-office', label: 'Head Office Leads', icon: Building });

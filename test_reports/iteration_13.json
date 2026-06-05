@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 13 — Designation Master CRUD, Jobs Archive/Delete, Employee Pipeline (Database), Auto EMPxxxx codes, Excel template/export/import, Migration backfill. Backend: 16/16 pytest passed. Frontend: All required data-testids present and integrations working after frontend restart (env var was stale).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Login admin@servall.com → JWT issued (form + API)",
+    "GET /api/designations returns 15 seeded items incl. Technician, Service Advisor, Franchise Manager",
+    "POST /api/designations creates + duplicate (case-insensitive) → 400",
+    "PUT /api/designations updates name/active; DELETE rejects 400 if referenced by employee; succeeds otherwise",
+    "POST /api/jobs creates with role from designation; archive→closed, reopen→open, delete→404",
+    "POST /api/employees auto EMP0001+ code; manual code accepted; duplicate manual code → 400; invalid employee_type → 400",
+    "GET /api/employees/pipeline-stats returns 9 stages + summary {total, head_office, franchise, joined, hold, rejected}",
+    "POST /api/employees/{id}/transition Hold requires hold_reason (400), Rejected requires rejection_reason (400), Joined sets status=active, stage history logged",
+    "GET /api/employees/{id}/history returns ordered logs",
+    "GET /api/employees/excel/template → .xlsx attachment ~7KB",
+    "GET /api/employees/excel/export → .xlsx attachment",
+    "POST /api/employees/excel/import created=2 / skipped=2 (invalid stage + invalid employee_type rows reported in errors[])",
+    "Migration: raw doc with only category=branch → backfilled employee_type=franchise, current_stage=joined, status=active, employee_code=EMP0008 (idempotent)",
+    "FRONTEND: /designations page loads with sidebar-nav-designations, create-designation-button, designation-name-input, save-designation-button — designation CRUD works",
+    "FRONTEND: /jobs page job-role-select populated from /api/designations (15 options dynamic, no hardcoded list)",
+    "FRONTEND: /database page mirrors Lead Pipeline — counters (counter-total/ho/franchise/joined/hold/rejected), all 9 stage tabs (new, qualified, hr, manager, selected, three_months, joined, hold, rejected) with live counts, '3 Months' label correctly maps to value 'three_months'",
+    "FRONTEND: Add Employee dialog (testids emp-name-input, emp-phone-input, emp-type-select, emp-stage-select, emp-designation-select, emp-code-input, save-employee-button) + 'HEAD OFFICE EMPLOYEE' badge visible on card",
+    "FRONTEND: download-template-button, excel-import-button (+ excel-import-input), excel-export-button, employee-type-filter, employee-search-input all present"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_designations_pipeline.py",
+    "/app/test_reports/pytest/pytest_iteration13.xml"
+  ],
+  "action_items": [
+    "Frontend was serving with REACT_APP_BACKEND_URL=undefined (all API calls hit /undefined/api/...). Root cause: frontend process was started before /app/frontend/.env was finalized; CRA only reads env on start. Fixed during this test session by `sudo supervisorctl restart frontend`. Recommend main agent verify the deployed pipeline restarts frontend after any .env change."
+  ],
+  "critical_code_review_comments": [
+    "EmployeeCreate dialog uses data-testid `emp-name-input` / `emp-type-select` / `emp-stage-select` / `emp-designation-select` / `emp-code-input` / `save-employee-button` — review request mentioned generic IDs without prefix; if a future test agent expects `employee-name-input`, harmonise naming.",
+    "DELETE /api/employees/{id} endpoint is not implemented in routes/employees.py. Test cleanup of TEST_ employees was a no-op (returns 405). Not blocking but leaves test rows; consider adding a CEO-only delete endpoint or a TEST_ cleanup helper.",
+    "/employees/{id}/transition allows rejected → joined transitions without resetting status. Consider explicit guards if business requires immutability after rejection.",
+    "/employees route registration ordering OK (specific routes /excel/* and /pipeline-stats before /{employee_id})."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13_designations_pipeline.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all testids + integrations verified)"},
+  "test_credentials": "admin@servall.com / ServallAdmin@123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and immediately deleted: 3 TEST_ designations, 1 TEST_Used designation (left in DB intentionally as proof of in-use deletion block - no cleanup endpoint), 7-8 TEST_ employees (no DELETE endpoint, remain in DB), 2 Excel-imported TEST_Imp employees, 1 migration test employee (cleaned up).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend: pytest /app/backend/tests/test_iteration13_designations_pipeline.py. Frontend: after any .env change in /app/frontend/.env, you MUST run `sudo supervisorctl restart frontend` for CRA to pick up REACT_APP_BACKEND_URL — otherwise all API calls go to /undefined/api/.... Login via form works; @ in email is NOT a Playwright problem here (prior agent's hypothesis was wrong — actual problem was the env-var). Stage value for '3 Months' label is 'three_months'. Employee dialog testids use 'emp-*' prefix.",
+  "rca of the issue": "Initial frontend login failed with `404 /undefined/api/auth/login`. RCA: Frontend was started before /app/frontend/.env was finalized so `process.env.REACT_APP_BACKEND_URL` was undefined inside the CRA bundle. Mitigation: `sudo supervisorctl restart frontend`. Recommend main agent ensure deploy pipeline restarts frontend after any .env edit."
+}

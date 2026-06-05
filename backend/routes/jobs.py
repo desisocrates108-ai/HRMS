@@ -117,3 +117,68 @@ async def update_job(job_id: str, data: JobUpdate, current_user: dict = Depends(
     await log_audit(current_user["id"], current_user["name"], "update", "job", job_id, update_data)
     job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     return job
+
+
+@router.post("/{job_id}/archive")
+async def archive_job(job_id: str, current_user: dict = Depends(require_role("super", "manager"))):
+    """Close/Archive a job. Active candidates remain — only closes new applications."""
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") in ("closed", "archived"):
+        raise HTTPException(status_code=400, detail="Job is already closed/archived")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.jobs.update_one(
+        {"id": job_id},
+        {"$set": {
+            "status": "closed",
+            "archived_at": now,
+            "archived_by": current_user["id"],
+            "archived_by_name": current_user["name"],
+            "updated_at": now,
+        }},
+    )
+    await log_audit(current_user["id"], current_user["name"], "archive", "job", job_id, {"role": job.get("role")})
+    return await db.jobs.find_one({"id": job_id}, {"_id": 0})
+
+
+@router.post("/{job_id}/reopen")
+async def reopen_job(job_id: str, current_user: dict = Depends(require_role("super", "manager"))):
+    """Reopen a closed/archived job."""
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") == "open":
+        raise HTTPException(status_code=400, detail="Job is already open")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.jobs.update_one(
+        {"id": job_id},
+        {"$set": {"status": "open", "updated_at": now}, "$unset": {"archived_at": "", "archived_by": "", "archived_by_name": ""}},
+    )
+    await log_audit(current_user["id"], current_user["name"], "reopen", "job", job_id, {"role": job.get("role")})
+    return await db.jobs.find_one({"id": job_id}, {"_id": 0})
+
+
+@router.delete("/{job_id}")
+async def delete_job(job_id: str, current_user: dict = Depends(require_role("super"))):
+    """Delete a job (Super only). Blocked if linked candidates/employees exist."""
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    lead_count = await db.leads.count_documents({"job_id": job_id})
+    if lead_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete — {lead_count} candidate(s) are linked to this job. Archive it instead.",
+        )
+    emp_count = await db.employees.count_documents({"job_id": job_id})
+    if emp_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete — {emp_count} employee(s) are linked to this job. Archive it instead.",
+        )
+    await db.jobs.delete_one({"id": job_id})
+    # Clean auto-created tasks tied to this job
+    await db.tasks.delete_many({"job_id": job_id, "auto_created": True})
+    await log_audit(current_user["id"], current_user["name"], "delete", "job", job_id, {"role": job.get("role")})
+    return {"success": True, "deleted_job_id": job_id}
