@@ -79,15 +79,35 @@ Parallel states: `hold` (resumable, requires hold_reason), `rejected` (terminal,
 ## Implemented in Iteration 13 (2026-06-05)
 - Designation Master with CRUD + seed of 13 defaults, used by Jobs/Employees dropdowns
 - Jobs: Archive, Reopen, Delete (with candidate dependency check)
-- Employee Database → Pipeline view mirroring LeadsPipelinePage
-  - Stages: new, qualified, hr, manager, selected, three_months, joined, hold, rejected
-  - Employee Types: head_office, franchise (with badges)
-  - Live stage counts + 6 summary counters
-  - Auto-generated EMPxxxx employee codes, manual override allowed (no duplicates)
-  - Idempotent migration script on startup backfills employee_type/current_stage/status/employee_code
+- Employee Database (originally pipeline, redesigned in Iter 14 → table view)
+- Auto-generated EMPxxxx employee codes, manual override allowed (no duplicates)
+- Idempotent migration script on startup backfills employee_type/current_stage/status/employee_code
 - Excel template / export / import via openpyxl (3.1.5)
 - Sidebar "Designations" menu (CEO/HR only)
-- 16/16 backend tests passing; all data-testids verified
+
+## Iteration 14 (2026-06-05) — Database Page Redesign
+- Removed pipeline view; replaced with CRM-style data table
+- 8 filters + global search; eye-icon side drawer with 7 tabs (Basic, Employment, Salary, Stage History, Audit, Documents, Notes)
+- Inline stage transitions per row (with Hold/Reject reason dialog)
+- Employee notes CRUD endpoints
+
+## Iteration 15 (2026-06-05) — Lead Delete + Candidate Form + Manager Round Fix
+- **Lead Soft Delete + Restore + Permanent Delete**
+  - POST /api/leads/{id}/delete (CEO/HR/owner)
+  - POST /api/leads/{id}/restore (CEO/HR)
+  - DELETE /api/leads/{id} (CEO/HR, requires soft-deleted first; blocked if linked employee)
+  - GET /api/leads/deleted (CEO/HR)
+  - GET /api/leads?include_deleted=true
+  - New "Deleted Leads" sidebar (CEO/HR)
+- **Candidate Information Form (WhatsApp-shared public form)**
+  - POST /api/candidate-forms/{lead_id}/send — generates token, attempts 11za WhatsApp dispatch, falls back to copy link
+  - Public GET/POST /api/candidate-forms/form/{token} — schema includes Personal, Education, Employment, Interview, Documents
+  - Files (Resume/Aadhaar/PAN/Photo) stored under /app/backend/uploads/candidates/{lead_id}/
+  - GET /api/candidate-forms/{lead_id}/document/{field} authenticated download
+  - Status badges on lead cards + detail page (Form Not Sent / Sent / Completed)
+- **Manager Round Permission Fix**
+  - POST /api/interviews/{lead_id}/manager: HR (any role containing 'hr') strictly 403; only assigned_manager_id or CEO override may submit; HR can VIEW only
+- 15/15 backend pytest pass; frontend testids verified end-to-end
 
 ## Backlog (P1/P2)
 - WebSocket real-time chat/notifications

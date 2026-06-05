@@ -100,10 +100,10 @@ async def send_candidate_form(
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a public form link and dispatch via WhatsApp (or return link for manual share)."""
-    if current_user.get("role") not in CEO_HR_ROLES and "HR" not in (current_user.get("role") or ""):
-        # Allow CEO + HR roles only
-        if current_user.get("role") not in CEO_HR_ROLES:
-            raise HTTPException(status_code=403, detail="Only CEO/HR can send candidate forms")
+    role_lower = (current_user.get("role") or "").lower().strip()
+    is_ceo_hr = role_lower in {"ceo", "super admin"} or "hr" in role_lower.split()
+    if not is_ceo_hr:
+        raise HTTPException(status_code=403, detail="Only CEO/HR can send candidate forms")
 
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:

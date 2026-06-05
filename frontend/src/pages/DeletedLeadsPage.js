@@ -102,7 +102,7 @@ export default function DeletedLeadsPage() {
                         variant="outline"
                         className="h-7 text-xs text-rose-700 hover:bg-rose-50"
                         onClick={() => setConfirm({ open: true, lead: l, action: 'hard_delete' })}
-                        data-testid={`permanent-delete-${l.id}`}
+                        data-testid={`permanent-delete-lead-${l.id}`}
                       >
                         <Trash2 className="w-3 h-3 mr-1" /> Permanent
                       </Button>

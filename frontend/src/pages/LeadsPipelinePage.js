@@ -220,10 +220,10 @@ export default function LeadsPipelinePage({ pipelineMode }) {
                               <span className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3" />{lead.phone}</span>
                               {lead.is_technician && <Badge variant="outline" className="text-xs px-1.5 py-0 text-blue-700 border-blue-200">Franchise</Badge>}
                               {lead.candidate_form_status === 'completed' && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-700 border-emerald-200" data-testid={`form-completed-${lead.id}`}>Form ✓</Badge>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-700 border-emerald-200" data-testid={`form-status-badge-completed-${lead.id}`}>Form ✓</Badge>
                               )}
                               {lead.candidate_form_status === 'sent' && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-200" data-testid={`form-sent-${lead.id}`}>Form Sent</Badge>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-200" data-testid={`form-status-badge-sent-${lead.id}`}>Form Sent</Badge>
                               )}
                               {lead.hold_reason && s.value === 'hold' && (
                                 <Badge variant="outline" className="text-xs px-1.5 py-0 text-orange-700 border-orange-200">Hold: {lead.hold_reason.slice(0, 30)}</Badge>
