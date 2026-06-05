@@ -758,6 +758,21 @@ async def mark_employee_exit(
     return {"success": True, "employee_id": employee_id, "auto_job_id": auto_job_id}
 
 
+@router.delete("/{employee_id}")
+async def delete_employee(
+    employee_id: str,
+    current_user: dict = Depends(require_role("super")),
+):
+    """Hard delete an employee (Super/CEO only). Also clears stage logs."""
+    emp = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    await db.employees.delete_one({"id": employee_id})
+    await db.employee_stage_logs.delete_many({"employee_id": employee_id})
+    await log_audit(current_user["id"], current_user["name"], "delete", "employee", employee_id, {"name": emp.get("name")})
+    return {"success": True, "deleted_employee_id": employee_id}
+
+
 # ---------------- MIGRATION (idempotent) ----------------
 
 async def migrate_employees_to_pipeline():

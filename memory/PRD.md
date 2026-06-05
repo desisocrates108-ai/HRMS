@@ -65,6 +65,29 @@ Parallel states: `hold` (resumable, requires hold_reason), `rejected` (terminal,
 - `GET /api/offer-letters/three-months-due` — leads ready for joined conversion
 - `POST /api/admin/cleanup` — CEO-only data wipe (preserves users)
 - `GET /api/admin/cleanup-preview` — counts before wipe
+- `GET/POST/PUT/DELETE /api/designations` — Designation Master CRUD (CEO/HR), blocks delete if referenced
+- `POST /api/jobs/{id}/archive` + `POST /api/jobs/{id}/reopen` — close/reopen jobs
+- `DELETE /api/jobs/{id}` — Super-only, blocked if leads/employees linked
+- `GET /api/employees/pipeline-stats` — stage_counts + summary (HO/Franchise/Total/Joined/Hold/Rejected)
+- `POST /api/employees/{id}/transition` — Hold/Rejected require reason
+- `GET /api/employees/{id}/history` — stage transition logs
+- `GET /api/employees/excel/template` — download import template (.xlsx)
+- `GET /api/employees/excel/export` — export filtered employees (.xlsx)
+- `POST /api/employees/excel/import` — bulk create from .xlsx (returns created/skipped/errors)
+- `DELETE /api/employees/{id}` — Super-only hard delete
+
+## Implemented in Iteration 13 (2026-06-05)
+- Designation Master with CRUD + seed of 13 defaults, used by Jobs/Employees dropdowns
+- Jobs: Archive, Reopen, Delete (with candidate dependency check)
+- Employee Database → Pipeline view mirroring LeadsPipelinePage
+  - Stages: new, qualified, hr, manager, selected, three_months, joined, hold, rejected
+  - Employee Types: head_office, franchise (with badges)
+  - Live stage counts + 6 summary counters
+  - Auto-generated EMPxxxx employee codes, manual override allowed (no duplicates)
+  - Idempotent migration script on startup backfills employee_type/current_stage/status/employee_code
+- Excel template / export / import via openpyxl (3.1.5)
+- Sidebar "Designations" menu (CEO/HR only)
+- 16/16 backend tests passing; all data-testids verified
 
 ## Backlog (P1/P2)
 - WebSocket real-time chat/notifications
@@ -72,3 +95,6 @@ Parallel states: `hold` (resumable, requires hold_reason), `rejected` (terminal,
 - Call recording + AI sentiment
 - Scheduled job to auto-create notifications when three_months_due_date passes (currently surfaced on dashboard count, but no push notification)
 - WhatsApp template approval reminder banner for CEO/HR
+- Designation usage analytics (count of active jobs/employees per designation in DesignationsPage card)
+- Bulk stage transition from DatabasePage (multi-select)
+- Drag-and-drop kanban view (currently uses Select dropdown for stage moves)
