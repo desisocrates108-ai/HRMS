@@ -596,6 +596,52 @@ async def employee_history(employee_id: str, current_user: dict = Depends(get_cu
     return logs
 
 
+class EmployeeNoteCreate(BaseModel):
+    text: str
+
+
+@router.get("/{employee_id}/notes")
+async def list_employee_notes(employee_id: str, current_user: dict = Depends(get_current_user)):
+    notes = await db.employee_notes.find({"employee_id": employee_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return notes
+
+
+@router.post("/{employee_id}/notes")
+async def add_employee_note(
+    employee_id: str,
+    data: EmployeeNoteCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    if not (data.text or "").strip():
+        raise HTTPException(status_code=400, detail="Note text is required")
+    emp = await db.employees.find_one({"id": employee_id}, {"_id": 0, "id": 1})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    note = {
+        "id": str(uuid.uuid4()),
+        "employee_id": employee_id,
+        "text": data.text.strip(),
+        "created_by": current_user["id"],
+        "created_by_name": current_user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.employee_notes.insert_one(note)
+    note.pop("_id", None)
+    return note
+
+
+@router.delete("/{employee_id}/notes/{note_id}")
+async def delete_employee_note(
+    employee_id: str,
+    note_id: str,
+    current_user: dict = Depends(require_role("super", "manager")),
+):
+    res = await db.employee_notes.delete_one({"id": note_id, "employee_id": employee_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"success": True}
+
+
 # ---------------- LEGACY: convert lead → employee ----------------
 
 @router.post("/convert/{lead_id}")
