@@ -84,8 +84,8 @@ function EmployeeDetailDrawer({ open, emp, onClose, onChanged, designations, bra
       API.get(`/employees/${emp.id}/history`).then(r => setHistory(r.data)),
       API.get(`/employees/${emp.id}/notes`).then(r => setNotes(r.data)),
       isSuper ? API.get('/audit', { params: { entity_id: emp.id, entity_type: 'employee', limit: 50 } }).then(r => setAudit(r.data)).catch(() => setAudit([])) : Promise.resolve(),
-      API.get(`/documents/lead/${emp.id}`).then(r => setDocs(r.data || [])).catch(() => setDocs([])),
     ]);
+    setDocs([]); // Documents are uploaded against leads, not employees — keep empty list for now.
   }, [open, emp, isSuper]);
 
   if (!emp) return null;
@@ -800,7 +800,7 @@ export default function DatabasePage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label className="text-xs">Name *</Label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" data-testid="emp-name-input" /></div>
             <div><Label className="text-xs">Phone</Label><Input value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: e.target.value})} className="mt-1" data-testid="emp-phone-input" /></div>
-            <div><Label className="text-xs">Email</Label><Input value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" /></div>
+            <div><Label className="text-xs">Email</Label><Input value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" data-testid="emp-email-input" /></div>
             <div>
               <Label className="text-xs">Employee Type *</Label>
               <Select value={createForm.employee_type} onValueChange={v => setCreateForm({...createForm, employee_type: v})}>
