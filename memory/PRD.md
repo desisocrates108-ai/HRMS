@@ -5,6 +5,11 @@
 - WhatsApp: 11za API (real httpx dispatch, fire-and-forget)
 - Public feedback: tokenized single-use links (no auth needed)
 
+## Feb 13, 2026 — Iteration 16 (latest)
+- **Job Designation on Leads**: `/api/leads` and `/api/leads/{id}` enriched with `job_role`. Pipeline cards show role (slate-600 medium) or "Role not specified" (italic grey). Lead Detail page shows prominent blue badge below name (`data-testid=lead-job-role-badge`).
+- **Open Positions Dashboard Widget**: New card under Lead Split on CEO + HR dashboards with two columns (Head Office | Franchise). Format: "Role — N openings — M applicants". Openings = count of open jobs grouped by role; applicants = leads linked to those jobs, respecting dashboard date filter (`date_from`/`date_to`/`days`).
+- **Employee Code Manual Entry**: Removed auto-generation in the create API. `EmployeeCreate.employee_code` is now required (Pydantic). Returns 409 on duplicate (create + update). `EmployeeUpdate.employee_code` added; empty string rejected with 400. Unique partial index on `employees.employee_code` (idempotent). Add Employee dialog and Edit drawer both expose a required text input with client-side validation; backend error surfaced via toast.
+
 ## Role Hierarchy
 - SUPER (full access): CEO, HR
 - MANAGER: Marketing/Operations/Sales/Accounts Manager (+ Franchise Manager allowed for interviews)
