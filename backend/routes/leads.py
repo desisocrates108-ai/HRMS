@@ -83,6 +83,16 @@ async def list_leads(
             {"phone": {"$regex": search, "$options": "i"}},
         ]
     leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    # Enrich each lead with job_role (designation) from linked job, if any
+    job_ids = list({l.get("job_id") for l in leads if l.get("job_id")})
+    if job_ids:
+        jobs = await db.jobs.find({"id": {"$in": job_ids}}, {"_id": 0, "id": 1, "role": 1}).to_list(len(job_ids))
+        role_map = {j["id"]: j.get("role") for j in jobs}
+        for l in leads:
+            l["job_role"] = role_map.get(l.get("job_id")) or None
+    else:
+        for l in leads:
+            l["job_role"] = None
     return leads
 
 
@@ -193,6 +203,12 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+    # Enrich with job_role (designation) if linked to a job
+    if lead.get("job_id"):
+        job = await db.jobs.find_one({"id": lead["job_id"]}, {"_id": 0, "role": 1})
+        lead["job_role"] = job.get("role") if job else None
+    else:
+        lead["job_role"] = None
     return lead
 
 

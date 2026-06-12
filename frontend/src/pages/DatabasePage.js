@@ -72,6 +72,7 @@ function EmployeeDetailDrawer({ open, emp, onClose, onChanged, designations, bra
       phone: emp.phone || '',
       email: emp.email || '',
       employee_type: emp.employee_type || 'head_office',
+      employee_code: emp.employee_code || '',
       role: emp.role || '',
       department: emp.department || '',
       branch_id: emp.branch_id || '',
@@ -93,11 +94,17 @@ function EmployeeDetailDrawer({ open, emp, onClose, onChanged, designations, bra
   const saveEdit = async () => {
     try {
       const payload = { ...form };
+      if (!payload.employee_code || !payload.employee_code.trim()) {
+        toast.error('Employee Code is required');
+        return;
+      }
+      payload.employee_code = payload.employee_code.trim();
       if (payload.salary === '') payload.salary = null;
       else if (payload.salary !== null) payload.salary = parseFloat(payload.salary);
       if (!payload.branch_id) payload.branch_id = null;
       Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null; });
       payload.name = form.name; // keep required
+      payload.employee_code = form.employee_code.trim(); // ensure not nulled by sweep
       await API.put(`/employees/${emp.id}`, payload);
       toast.success('Employee updated');
       setEditing(false);
@@ -205,8 +212,16 @@ function EmployeeDetailDrawer({ open, emp, onClose, onChanged, designations, bra
             {editing ? (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Name *"><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></Field>
+                <Field label="Employee Code *">
+                  <Input
+                    value={form.employee_code}
+                    onChange={e => setForm({...form, employee_code: e.target.value})}
+                    placeholder="e.g., EMP0099"
+                    data-testid="drawer-emp-code-input"
+                  />
+                </Field>
                 <Field label="Phone"><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></Field>
-                <Field label="Email" span={2}><Input value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></Field>
+                <Field label="Email"><Input value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></Field>
                 <Field label="Employee Type">
                   <Select value={form.employee_type} onValueChange={v => setForm({...form, employee_type: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -518,6 +533,7 @@ export default function DatabasePage() {
   // ----- Actions -----
   const handleCreate = async () => {
     if (!createForm.name.trim()) { toast.error('Name is required'); return; }
+    if (!createForm.employee_code.trim()) { toast.error('Employee Code is required'); return; }
     try {
       const payload = { ...createForm };
       if (payload.salary === '') payload.salary = null;
@@ -840,7 +856,18 @@ export default function DatabasePage() {
             <div><Label className="text-xs">Area</Label><Input value={createForm.location_area} onChange={e => setCreateForm({...createForm, location_area: e.target.value})} className="mt-1" /></div>
             <div><Label className="text-xs">Joining Date</Label><Input type="date" value={createForm.joining_date} onChange={e => setCreateForm({...createForm, joining_date: e.target.value})} className="mt-1" /></div>
             <div><Label className="text-xs">Salary</Label><Input type="number" value={createForm.salary} onChange={e => setCreateForm({...createForm, salary: e.target.value})} className="mt-1" /></div>
-            <div className="col-span-2"><Label className="text-xs">Employee Code (leave blank to auto-generate)</Label><Input value={createForm.employee_code} onChange={e => setCreateForm({...createForm, employee_code: e.target.value})} placeholder="e.g., EMP0099" className="mt-1" data-testid="emp-code-input" /></div>
+            <div className="col-span-2">
+              <Label className="text-xs">Employee Code <span className="text-rose-600">*</span></Label>
+              <Input
+                value={createForm.employee_code}
+                onChange={e => setCreateForm({...createForm, employee_code: e.target.value})}
+                placeholder="e.g., EMP0099"
+                className="mt-1"
+                required
+                data-testid="emp-code-input"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Required. Must be unique across all employees.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>

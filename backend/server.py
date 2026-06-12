@@ -112,7 +112,20 @@ async def startup():
     await db.tasks.create_index("id", unique=True)
     await db.tasks.create_index("assigned_to")
     await db.employees.create_index("id", unique=True)
-    await db.employees.create_index("employee_code")
+    # Drop legacy non-unique index if present, then create unique partial index
+    try:
+        await db.employees.drop_index("employee_code_1")
+    except Exception:
+        pass
+    try:
+        await db.employees.create_index(
+            "employee_code",
+            unique=True,
+            partialFilterExpression={"employee_code": {"$exists": True, "$type": "string"}},
+            name="employee_code_unique",
+        )
+    except Exception as ex:
+        logger.warning(f"Could not create unique employee_code index: {ex}")
     await db.employees.create_index("current_stage")
     await db.employees.create_index("employee_type")
     await db.designations.create_index("id", unique=True)

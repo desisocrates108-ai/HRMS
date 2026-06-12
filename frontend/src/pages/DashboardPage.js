@@ -145,6 +145,62 @@ function LeadSplitCards({ split }) {
   );
 }
 
+function OpenPositionsCard({ data }) {
+  const nav = useNavigate();
+  if (!data) return null;
+  const hoRows = data.head_office || [];
+  const frRows = data.franchise || [];
+  if (hoRows.length === 0 && frRows.length === 0) return null;
+
+  const Section = ({ title, icon: Icon, rows, segmentKey }) => (
+    <div className="flex flex-col gap-2 min-w-0" data-testid={`open-positions-${segmentKey}`}>
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <Icon className="w-3.5 h-3.5" />
+        <span>{title}</span>
+        <Badge variant="outline" className="text-[10px] ml-auto">{rows.length}</Badge>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-slate-400 italic py-2">No open positions</p>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((r) => (
+            <button
+              key={`${segmentKey}-${r.role}`}
+              onClick={() => nav('/jobs')}
+              className="w-full text-left p-2.5 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+              data-testid={`open-position-row-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
+            >
+              <p className="text-sm font-medium text-slate-900 truncate">{r.role}</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="text-emerald-700 font-semibold">{r.applicants}</span> {r.applicants === 1 ? 'applicant' : 'applicants'}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Card className="border-slate-200 shadow-none" data-testid="open-positions-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-medium flex items-center gap-2">
+          <Briefcase className="w-4 h-4 text-blue-700" />
+          Open Positions
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Section title="Head Office" icon={Building2} rows={hoRows} segmentKey="head_office" />
+          <Section title="Franchise" icon={Users} rows={frRows} segmentKey="franchise" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DateFilterBar({ value, onChange }) {
   const opts = [
     { value: 'all', label: 'All' },
@@ -337,6 +393,7 @@ function CEODash({ s }) {
     <h1 className="text-2xl font-heading font-semibold text-slate-900">CEO Dashboard</h1>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /></div>
     <LeadSplitCards split={s.lead_split} />
+    <OpenPositionsCard data={s.open_positions} />
     {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => window.location.href = '/jobs'}><CardContent className="p-3"><div className="flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4 text-red-600" /><span className="text-sm font-semibold text-red-800">Overdue Jobs ({s.overdue_jobs.length})</span></div>{s.overdue_jobs.map(j => <p key={j.id} className="text-xs text-red-700">{j.role} - {j.location} (deadline: {j.deadline})</p>)}</CardContent></Card>}
     <LeadSourceCards data={s} />
     <Tabs defaultValue="technician"><TabsList className="grid grid-cols-2 w-full md:w-96"><TabsTrigger value="technician" data-testid="tab-technician">Franchise (FDE)</TabsTrigger><TabsTrigger value="ho" data-testid="tab-ho">Head Office (HR)</TabsTrigger></TabsList>
@@ -392,6 +449,7 @@ function HRDash({ s }) {
     <h1 className="text-2xl font-heading font-semibold text-slate-900">HR Dashboard</h1>
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3"><KPI icon={Users} label="Total Leads" value={tm.total_leads} color="text-blue-700" to="/leads" /><KPI icon={TrendingUp} label="Hirings" value={tm.total_hirings} color="text-emerald-600" to="/employees" /><KPI icon={UserCheck} label="Employees" value={tm.total_employees} color="text-violet-600" to="/employees" /><KPI icon={Phone} label="Calls Done" value={tm.calls_done} color="text-amber-600" to="/leads" /><KPI icon={Phone} label="Today Calls" value={tm.calls_today} color="text-blue-600" to="/leads" /></div>
     <LeadSplitCards split={s.lead_split} />
+    <OpenPositionsCard data={s.open_positions} />
     <div className="flex gap-3 flex-wrap"><Button size="sm" variant="outline" onClick={() => nav('/posts')} data-testid="go-post-panel"><Image className="w-3 h-3 mr-1" />Post Panel ({s.pending_reviews||0} to review)</Button><Button size="sm" variant="outline" onClick={() => nav('/leads')}>All Leads</Button><Button size="sm" variant="outline" onClick={() => nav('/jobs')}>All Jobs ({s.all_jobs?.length||0})</Button></div>
     {s.overdue_jobs?.length > 0 && <Card className="border-red-200 bg-red-50/50 shadow-none cursor-pointer hover:bg-red-50 transition-colors" onClick={() => nav('/jobs')}><CardContent className="p-3"><AlertCircle className="w-4 h-4 text-red-600 inline mr-1" /><span className="text-sm font-semibold text-red-800">Overdue: </span>{s.overdue_jobs.map(j => <Badge key={j.id} variant="destructive" className="text-xs mr-1">{j.role}</Badge>)}</CardContent></Card>}
     <PipelineRow pipeline={s.overall_pipeline} />

@@ -244,6 +244,24 @@ export default function LeadDetailPage() {
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-xl font-heading font-semibold text-slate-900">{lead.name}</h2>
+              <div className="mt-1.5">
+                {lead.job_role ? (
+                  <Badge
+                    className="bg-blue-700 text-white border-0 text-sm font-medium px-3 py-1"
+                    data-testid="lead-job-role-badge"
+                  >
+                    {lead.job_role}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="bg-slate-50 text-slate-400 italic border-slate-200 text-sm px-3 py-1"
+                    data-testid="lead-job-role-badge"
+                  >
+                    Role not specified
+                  </Badge>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-slate-500">
                 {lead.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{lead.phone}</span>}
                 {lead.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{lead.email}</span>}

@@ -124,6 +124,54 @@ def _date_range_iso(date_from, date_to, days):
     return clause
 
 
+async def get_open_positions(date_clause=None):
+    """Build Open Positions widget data, grouped by designation.
+
+    Returns:
+        {
+            "head_office": [{"role": "...", "openings": N, "applicants": M}, ...],
+            "franchise":   [{"role": "...", "openings": N, "applicants": M}, ...],
+        }
+
+    `openings` = count of OPEN jobs with that role within the segment.
+    `applicants` = count of leads linked (via job_id) to those jobs.
+                   Respects the dashboard date filter (lead.created_at) when provided.
+    """
+    open_jobs = await db.jobs.find({"status": "open"}, {"_id": 0}).to_list(2000)
+
+    # Bucket: (segment, role) -> {"job_ids": [...], "openings": int}
+    buckets: dict[tuple[str, str], dict] = {}
+    for j in open_jobs:
+        role = (j.get("role") or "").strip()
+        if not role:
+            continue
+        # Franchise jobs are those of type 'branch' (also covered by branch_id)
+        is_franchise = j.get("type") == "branch" or bool(j.get("branch_id"))
+        segment = "franchise" if is_franchise else "head_office"
+        key = (segment, role)
+        b = buckets.setdefault(key, {"job_ids": [], "openings": 0})
+        b["job_ids"].append(j["id"])
+        b["openings"] += 1
+
+    # Compute applicant counts per bucket (one Mongo query per bucket, small set)
+    result = {"head_office": [], "franchise": []}
+    for (segment, role), b in buckets.items():
+        lead_q = {"job_id": {"$in": b["job_ids"]}, "deleted": {"$ne": True}}
+        if date_clause:
+            lead_q["created_at"] = date_clause
+        applicants = await db.leads.count_documents(lead_q)
+        result[segment].append({
+            "role": role,
+            "openings": b["openings"],
+            "applicants": applicants,
+        })
+
+    # Sort by openings desc, then role
+    for segment in result:
+        result[segment].sort(key=lambda r: (-r["openings"], r["role"].lower()))
+    return result
+
+
 @router.get("/stats")
 async def get_dashboard_stats(
     date_from: Optional[str] = None,
@@ -197,11 +245,13 @@ async def get_dashboard_stats(
 
         overdue = await get_overdue_jobs()
         franchises = await get_franchise_summary()
+        open_positions = await get_open_positions(dr)
 
         return {
             "type": "ceo", "user_level": "super",
             "top_metrics": {"total_leads": total_leads, "total_hirings": total_hirings, "total_employees": total_hirings, "calls_done": calls_done},
             "lead_split": split_counts,
+            "open_positions": open_positions,
             "technician_hiring": {"jobs": tech_jobs, "leads_by_source": split_by_source(tech_leads), "pipeline": build_pipeline(tech_leads), "total_leads": len(tech_leads)},
             "ho_hiring": {"jobs": ho_jobs, "leads_by_source": split_by_source(ho_leads), "pipeline": build_pipeline(ho_leads), "total_leads": len(ho_leads)},
             "call_tracking": call_tracking[:15],
@@ -232,11 +282,13 @@ async def get_dashboard_stats(
         pending_posts = await db.post_requests.count_documents({"status": "pending"})
         pending_reviews = await db.posts.count_documents({"review_status": "pending"})
         franchises = await get_franchise_summary()
+        open_positions = await get_open_positions(dr)
 
         return {
             "type": "hr", "user_level": "super",
             "top_metrics": {"total_leads": total_leads, "total_hirings": total_hirings, "total_employees": total_hirings, "calls_done": calls_done, "calls_today": calls_today},
             "lead_split": split_counts,
+            "open_positions": open_positions,
             "technician_hiring": {"leads_by_source": split_by_source(tech_leads), "pipeline": build_pipeline(tech_leads), "total_leads": len(tech_leads)},
             "ho_hiring": {"leads_by_source": split_by_source(ho_leads), "pipeline": build_pipeline(ho_leads), "total_leads": len(ho_leads)},
             "all_jobs": all_jobs,

@@ -216,6 +216,12 @@ export default function LeadsPipelinePage({ pipelineMode }) {
                           <div className={`w-2 h-8 rounded-full ${s.color} flex-shrink-0`} />
                           <div className="min-w-0">
                             <p className="font-medium text-slate-900 truncate">{lead.name}</p>
+                            <p
+                              className={`text-xs mt-0.5 truncate ${lead.job_role ? 'text-slate-600 font-medium' : 'text-slate-400 italic'}`}
+                              data-testid={`lead-job-role-${lead.id}`}
+                            >
+                              {lead.job_role || 'Role not specified'}
+                            </p>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3" />{lead.phone}</span>
                               {lead.is_technician && <Badge variant="outline" className="text-xs px-1.5 py-0 text-blue-700 border-blue-200">Franchise</Badge>}

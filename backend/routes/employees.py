@@ -52,7 +52,7 @@ class EmployeeCreate(BaseModel):
     location_area: Optional[str] = None
     joining_date: Optional[str] = None
     salary: Optional[float] = None
-    employee_code: Optional[str] = None  # manual override
+    employee_code: str  # required manual entry
     reporting_manager_id: Optional[str] = None
 
 
@@ -68,6 +68,7 @@ class EmployeeUpdate(BaseModel):
     location_area: Optional[str] = None
     joining_date: Optional[str] = None
     salary: Optional[float] = None
+    employee_code: Optional[str] = None
     reporting_manager_id: Optional[str] = None
 
 
@@ -467,14 +468,13 @@ async def create_employee(
     stage = data.current_stage or "new"
     if stage not in EMP_PIPELINE_STAGES:
         raise HTTPException(status_code=400, detail=f"Invalid stage '{stage}'")
-    # Employee code
+    # Employee code (required, manual)
     code = (data.employee_code or "").strip()
-    if code:
-        clash = await db.employees.find_one({"employee_code": code})
-        if clash:
-            raise HTTPException(status_code=400, detail=f"Employee Code '{code}' already exists")
-    else:
-        code = await _next_employee_code()
+    if not code:
+        raise HTTPException(status_code=400, detail="Employee Code is required")
+    clash = await db.employees.find_one({"employee_code": code})
+    if clash:
+        raise HTTPException(status_code=409, detail=f"Employee Code '{code}' already exists")
 
     now = datetime.now(timezone.utc).isoformat()
     emp = {
@@ -527,6 +527,16 @@ async def update_employee(
         raise HTTPException(status_code=400, detail="Nothing to update")
     if "employee_type" in payload and payload["employee_type"] not in EMP_TYPES:
         raise HTTPException(status_code=400, detail="Invalid employee_type")
+    if "employee_code" in payload:
+        new_code = (payload["employee_code"] or "").strip()
+        if not new_code:
+            raise HTTPException(status_code=400, detail="Employee Code cannot be empty")
+        clash = await db.employees.find_one(
+            {"employee_code": new_code, "id": {"$ne": employee_id}}
+        )
+        if clash:
+            raise HTTPException(status_code=409, detail=f"Employee Code '{new_code}' already exists")
+        payload["employee_code"] = new_code
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     res = await db.employees.update_one({"id": employee_id}, {"$set": payload})
     if res.matched_count == 0:
