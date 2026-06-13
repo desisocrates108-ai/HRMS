@@ -116,7 +116,9 @@ export default function LeadDetailPage() {
   // Role / Job assignment
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [jobs, setJobs] = useState([]);
+  const [designations, setDesignations] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState('');
+  const [roleText, setRoleText] = useState('');
   const [savingRole, setSavingRole] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -144,11 +146,12 @@ export default function LeadDetailPage() {
 
   const openRoleDialog = async () => {
     setSelectedJobId(lead?.job_id || '');
+    setRoleText(lead?.job_role || '');
     setRoleDialogOpen(true);
+    // Lazy-load jobs + designations once
     if (jobs.length === 0) {
       try {
         const { data } = await API.get('/jobs');
-        // Filter by the appropriate segment (technician = franchise/branch)
         const isTech = !!lead?.is_technician;
         const filtered = (data || []).filter(j => {
           const isFranchise = j.type === 'branch' || !!j.branch_id;
@@ -156,7 +159,15 @@ export default function LeadDetailPage() {
         });
         setJobs(filtered);
       } catch {
-        toast.error('Could not load jobs');
+        // not fatal — manual input still works
+      }
+    }
+    if (designations.length === 0) {
+      try {
+        const { data } = await API.get('/designations');
+        setDesignations(data || []);
+      } catch {
+        // not fatal
       }
     }
   };
@@ -164,10 +175,20 @@ export default function LeadDetailPage() {
   const saveRole = async () => {
     setSavingRole(true);
     try {
-      const payload = { job_id: selectedJobId || '' };
+      const payload = {};
+      const trimmed = (roleText || '').trim();
+      if (selectedJobId) {
+        // Linking to a job — clear manual override to use job's role
+        payload.job_id = selectedJobId;
+        payload.job_role = '';
+      } else {
+        // No job link: store the manual role text (empty = unassign)
+        payload.job_id = '';
+        payload.job_role = trimmed;
+      }
       const { data } = await API.put(`/leads/${id}`, payload);
       setLead(data);
-      toast.success(selectedJobId ? 'Role updated' : 'Role removed');
+      toast.success(trimmed || selectedJobId ? 'Role updated' : 'Role removed');
       setRoleDialogOpen(false);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to update role');
@@ -850,27 +871,45 @@ export default function LeadDetailPage() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-slate-600">
-              Pick the job opening to link this candidate to. The designation will reflect on the lead card and across the dashboard.
+              Type the designation directly, or pick a specific job opening to link this candidate to.
             </p>
             <div>
-              <Label className="text-xs text-slate-500">Job Opening ({lead?.is_technician ? 'Franchise' : 'Head Office'})</Label>
-              <select
-                className="mt-1 w-full border border-slate-200 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
-                data-testid="lead-role-job-select"
-              >
-                <option value="">— No role / Unassign —</option>
-                {jobs.map(j => (
-                  <option key={j.id} value={j.id}>
-                    {j.role}{j.location_city ? ` · ${j.location_city}` : ''}{j.status !== 'open' ? ` (${j.status})` : ''}
-                  </option>
-                ))}
-              </select>
-              {jobs.length === 0 && (
-                <p className="text-xs text-slate-400 italic mt-1.5">No jobs available for this segment</p>
-              )}
+              <Label className="text-xs text-slate-500">Role / Designation</Label>
+              <Input
+                type="text"
+                list="designation-options"
+                value={roleText}
+                onChange={(e) => { setRoleText(e.target.value); setSelectedJobId(''); }}
+                placeholder="e.g., Service Advisor"
+                className="mt-1"
+                data-testid="lead-role-text-input"
+                autoFocus
+              />
+              <datalist id="designation-options">
+                {designations.map(d => <option key={d.id} value={d.name} />)}
+              </datalist>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {designations.length > 0 ? `${designations.length} designations available · ` : ''}or type a new one
+              </p>
             </div>
+            {jobs.length > 0 && (
+              <div>
+                <Label className="text-xs text-slate-500">Or link to a specific job opening ({lead?.is_technician ? 'Franchise' : 'Head Office'})</Label>
+                <select
+                  className="mt-1 w-full border border-slate-200 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedJobId}
+                  onChange={(e) => { setSelectedJobId(e.target.value); if (e.target.value) { const j = jobs.find(j => j.id === e.target.value); setRoleText(j?.role || ''); } }}
+                  data-testid="lead-role-job-select"
+                >
+                  <option value="">— Don't link to a job (use role text above) —</option>
+                  {jobs.map(j => (
+                    <option key={j.id} value={j.id}>
+                      {j.role}{j.location ? ` · ${j.location}` : ''}{j.status !== 'open' ? ` (${j.status})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRoleDialogOpen(false)} data-testid="lead-role-cancel">Cancel</Button>

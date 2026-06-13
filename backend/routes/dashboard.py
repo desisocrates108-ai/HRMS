@@ -163,11 +163,11 @@ async def get_open_positions(date_clause=None):
     leads = await db.leads.find(
         lead_q,
         {"_id": 0, "id": 1, "name": 1, "phone": 1, "is_technician": 1,
-         "job_id": 1, "current_stage": 1, "created_at": 1},
+         "job_id": 1, "job_role": 1, "current_stage": 1, "created_at": 1},
     ).to_list(20000)
 
-    # Enrich job info in one shot
-    job_ids = list({l.get("job_id") for l in leads if l.get("job_id")})
+    # Enrich job info in one shot (only needed for leads without a manual job_role)
+    job_ids = list({l.get("job_id") for l in leads if l.get("job_id") and not l.get("job_role")})
     job_map = {}
     if job_ids:
         async for j in db.jobs.find(
@@ -179,8 +179,9 @@ async def get_open_positions(date_clause=None):
     buckets: dict[tuple[str, str], dict] = {}
     for l in leads:
         seg = "franchise" if l.get("is_technician") else "head_office"
-        job = job_map.get(l.get("job_id")) if l.get("job_id") else None
-        role = ((job or {}).get("role") or "").strip() or UNASSIGNED
+        manual_role = (l.get("job_role") or "").strip()
+        job = job_map.get(l.get("job_id")) if l.get("job_id") and not manual_role else None
+        role = manual_role or ((job or {}).get("role") or "").strip() or UNASSIGNED
         key = (seg, role)
         b = buckets.setdefault(key, {
             "role": role,

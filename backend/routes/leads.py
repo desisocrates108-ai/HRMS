@@ -36,6 +36,7 @@ class LeadUpdate(BaseModel):
     assigned_to: Optional[str] = None
     is_technician: Optional[bool] = None
     job_id: Optional[str] = None
+    job_role: Optional[str] = None
 
 
 class StageTransition(BaseModel):
@@ -84,16 +85,16 @@ async def list_leads(
             {"phone": {"$regex": search, "$options": "i"}},
         ]
     leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    # Enrich each lead with job_role (designation) from linked job, if any
-    job_ids = list({l.get("job_id") for l in leads if l.get("job_id")})
+    # Enrich each lead with job_role (designation): prefer manual job_role on lead,
+    # fallback to role of the linked job (if any), else None
+    job_ids = list({l.get("job_id") for l in leads if l.get("job_id") and not l.get("job_role")})
+    role_map = {}
     if job_ids:
         jobs = await db.jobs.find({"id": {"$in": job_ids}}, {"_id": 0, "id": 1, "role": 1}).to_list(len(job_ids))
         role_map = {j["id"]: j.get("role") for j in jobs}
-        for l in leads:
-            l["job_role"] = role_map.get(l.get("job_id")) or None
-    else:
-        for l in leads:
-            l["job_role"] = None
+    for l in leads:
+        if not l.get("job_role"):
+            l["job_role"] = role_map.get(l.get("job_id")) if l.get("job_id") else None
     return leads
 
 
@@ -204,12 +205,13 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    # Enrich with job_role (designation) if linked to a job
-    if lead.get("job_id"):
-        job = await db.jobs.find_one({"id": lead["job_id"]}, {"_id": 0, "role": 1})
-        lead["job_role"] = job.get("role") if job else None
-    else:
-        lead["job_role"] = None
+    # Enrich: prefer manual job_role on lead, fallback to linked job's role
+    if not lead.get("job_role"):
+        if lead.get("job_id"):
+            job = await db.jobs.find_one({"id": lead["job_id"]}, {"_id": 0, "role": 1})
+            lead["job_role"] = job.get("role") if job else None
+        else:
+            lead["job_role"] = None
     return lead
 
 
@@ -257,31 +259,42 @@ async def create_lead(data: LeadCreate, current_user: dict = Depends(get_current
 @router.put("/{lead_id}")
 async def update_lead(lead_id: str, data: LeadUpdate, current_user: dict = Depends(get_current_user)):
     update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    unset_fields = {}
     # Allow explicit unset of job_id via empty string
     if data.model_fields_set and "job_id" in data.model_fields_set and (data.job_id is None or data.job_id == ""):
         update_data.pop("job_id", None)
-        await db.leads.update_one({"id": lead_id}, {"$unset": {"job_id": ""}})
-    if not update_data and not (data.model_fields_set and "job_id" in data.model_fields_set):
+        unset_fields["job_id"] = ""
+    # Allow explicit unset of job_role via empty string
+    if data.model_fields_set and "job_role" in data.model_fields_set and (data.job_role is None or data.job_role.strip() == ""):
+        update_data.pop("job_role", None)
+        unset_fields["job_role"] = ""
+    elif "job_role" in update_data:
+        update_data["job_role"] = update_data["job_role"].strip()
+    if not update_data and not unset_fields:
         raise HTTPException(status_code=400, detail="No data to update")
     # Validate job_id exists if provided
     if update_data.get("job_id"):
-        job_exists = await db.jobs.find_one({"id": update_data["job_id"]}, {"_id": 0, "id": 1})
+        job_exists = await db.jobs.find_one({"id": update_data["job_id"]}, {"_id": 0, "id": 1, "role": 1})
         if not job_exists:
             raise HTTPException(status_code=404, detail="Job not found")
+    mongo_update = {}
     if update_data:
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        result = await db.leads.update_one({"id": lead_id}, {"$set": update_data})
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Lead not found")
-    await log_audit(current_user["id"], current_user["name"], "update", "lead", lead_id, update_data)
+        mongo_update["$set"] = update_data
+    if unset_fields:
+        mongo_update["$unset"] = unset_fields
+    result = await db.leads.update_one({"id": lead_id}, mongo_update)
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    await log_audit(current_user["id"], current_user["name"], "update", "lead", lead_id, {**update_data, **({"unset": list(unset_fields.keys())} if unset_fields else {})})
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    # Enrich with job_role
-    if lead.get("job_id"):
+    # Enrich: prefer manual job_role on lead; fallback to linked job's role
+    if not lead.get("job_role") and lead.get("job_id"):
         j = await db.jobs.find_one({"id": lead["job_id"]}, {"_id": 0, "role": 1})
         lead["job_role"] = j.get("role") if j else None
-    else:
+    elif not lead.get("job_role"):
         lead["job_role"] = None
     return lead
 
