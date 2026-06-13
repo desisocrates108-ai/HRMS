@@ -167,7 +167,14 @@ function OpenPositionsCard({ data }) {
     hold: 'bg-rose-100 text-rose-700',
   };
 
-  const Section = ({ title, icon: Icon, rows, segmentKey }) => (
+  const Section = ({ title, icon: Icon, rows, segmentKey }) => {
+    const targetPath = segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
+    const goTo = (role, stage) => {
+      const params = new URLSearchParams({ job_role: role });
+      if (stage) params.set('stage', stage);
+      nav(`${targetPath}?${params.toString()}`);
+    };
+    return (
     <div className="flex flex-col gap-2 min-w-0" data-testid={`open-positions-${segmentKey}`}>
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
         <Icon className="w-3.5 h-3.5" />
@@ -182,42 +189,50 @@ function OpenPositionsCard({ data }) {
             const sb = r.stage_breakdown || {};
             const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
             return (
-              <button
+              <div
                 key={`${segmentKey}-${r.role}`}
-                onClick={() => nav('/jobs')}
-                className="w-full text-left p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                className="p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
                 data-testid={`open-position-row-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
               >
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900 truncate">{r.role}</p>
+                <button
+                  type="button"
+                  onClick={() => goTo(r.role)}
+                  className="w-full flex items-baseline justify-between gap-2 text-left group"
+                  data-testid={`open-position-role-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
+                >
+                  <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-700">{r.role}</p>
                   <p className="text-xs text-slate-500 shrink-0">
                     <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
                     <span className="mx-1 text-slate-300">·</span>
                     <span className="text-emerald-700 font-semibold">{r.applicants}</span> active
                   </p>
-                </div>
+                </button>
                 {activeStages.length > 0 ? (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {activeStages.map(([stg, n]) => (
-                      <span
+                      <button
+                        type="button"
                         key={stg}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'}`}
+                        onClick={(e) => { e.stopPropagation(); goTo(r.role, stg); }}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400 transition`}
                         data-testid={`stage-pill-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}-${stg}`}
+                        title={`See ${r.role} candidates in ${STAGE_LABELS[stg] || stg}`}
                       >
                         {STAGE_LABELS[stg] || stg}: {n}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 ) : (
                   <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants yet</p>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <Card className="border-slate-200 shadow-none" data-testid="open-positions-card">

@@ -44,6 +44,7 @@ export default function LeadsPipelinePage({ pipelineMode }) {
   const [searchParams] = useSearchParams();
   const stageParam = searchParams.get('stage');
   const sourceParam = searchParams.get('source');
+  const jobRoleParam = searchParams.get('job_role');
   const isTechnicianMode = pipelineMode === 'technician';
   const stages = isTechnicianMode ? TECH_STAGES : HO_STAGES;
 
@@ -121,10 +122,11 @@ export default function LeadsPipelinePage({ pipelineMode }) {
     const matchSearch = !searchQuery || l.name?.toLowerCase().includes(searchQuery.toLowerCase()) || l.phone?.includes(searchQuery);
     const matchSource = sourceFilter === 'all' || l.source === sourceFilter;
     const matchAssignee = assigneeFilter === 'all' || l.assigned_to === assigneeFilter;
+    const matchRole = !jobRoleParam || (l.job_role || '').toLowerCase() === jobRoleParam.toLowerCase();
     const created = l.created_at || '';
     const matchFrom = !dateFrom || created >= dateFrom;
     const matchTo = !dateTo || created <= dateTo + 'T23:59:59';
-    return matchStage && matchSearch && matchSource && matchAssignee && matchFrom && matchTo;
+    return matchStage && matchSearch && matchSource && matchAssignee && matchRole && matchFrom && matchTo;
   });
 
   const stageCounts = {};
@@ -132,7 +134,8 @@ export default function LeadsPipelinePage({ pipelineMode }) {
     stageCounts[s.value] = leads.filter((l) => {
       const matchSrc = sourceFilter === 'all' || l.source === sourceFilter;
       const matchAss = assigneeFilter === 'all' || l.assigned_to === assigneeFilter;
-      return l.current_stage === s.value && matchSrc && matchAss;
+      const matchRl = !jobRoleParam || (l.job_role || '').toLowerCase() === jobRoleParam.toLowerCase();
+      return l.current_stage === s.value && matchSrc && matchAss && matchRl;
     }).length;
   });
 
@@ -149,6 +152,21 @@ export default function LeadsPipelinePage({ pipelineMode }) {
             <PageIcon className="w-5 h-5" /> {pageTitle}
           </h1>
           <p className="text-sm text-slate-500">{leads.length} total · {filteredLeads.length} in {stages.find(s => s.value === activeStage)?.label}</p>
+          {jobRoleParam && (
+            <div className="mt-2 inline-flex items-center gap-2 text-xs">
+              <Badge className="bg-blue-100 text-blue-800 border-0" data-testid="role-filter-badge">
+                Filtered by role: {jobRoleParam}
+              </Badge>
+              <button
+                type="button"
+                onClick={() => navigate(window.location.pathname, { replace: true })}
+                className="text-blue-700 hover:underline"
+                data-testid="clear-role-filter"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
         </div>
         <Button onClick={() => setDialogOpen(true)} className="bg-blue-700 hover:bg-blue-800 active:scale-[0.98]" data-testid="create-lead-button">
           <Plus className="w-4 h-4 mr-1" /> Add Lead
