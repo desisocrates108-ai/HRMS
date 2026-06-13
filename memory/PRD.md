@@ -5,7 +5,21 @@
 - WhatsApp: 11za API (real httpx dispatch, fire-and-forget)
 - Public feedback: tokenized single-use links (no auth needed)
 
-## Feb 13, 2026 — Iteration 17 (latest follow-up)
+## Feb 13, 2026 — Iteration 22 (latest) — Designation-based Hiring module
+
+**Breaking change to data model + UX:**
+- Designations now carry `office_type` (`head_office` | `franchise`). Legacy rows auto-backfilled at boot. DB unique index migrated from `name_lower_1` → compound `(name_lower, office_type)` so same name can exist across both office types.
+- Lead model adds `designation_id`, `min_salary`, `max_salary`, `description`. Creating/updating a lead with `designation_id` auto-fills `job_role` from the designation name and sets `is_technician` from its `office_type`.
+- Add Lead form (both HO and Franchise) now has **Designation* / Min Salary / Max Salary / Description** in place of the removed Job dropdown.
+- **Jobs module soft-removed**: sidebar entry replaced with **Hirings**; `/jobs` route redirects to `/hirings`. All Jobs data preserved in DB. Existing `job_id` linkage on leads still resolves for backward compatibility.
+
+**New Hirings module (`/hirings`):**
+- Two tabs (Head Office | Franchise) — each lists every designation of that office_type as a card.
+- Each card shows total + 8-stage breakdown: New, Qualified, **Interview Scheduled** (hr_interview), **Interview Completed** (manager_interview), Hold, Selected, Joined (three_months merged in), Rejected.
+- Click card → `/hirings/{segment}/designations/{id}` candidate listing (Name, Mobile, Email, Applied date, Stage badge, View → opens existing Lead Detail page).
+- Legacy leads (`job_role` string, no `designation_id`) still match by case-insensitive name; ad-hoc unknown roles show with a "Legacy" badge.
+
+## Feb 13, 2026 — Iteration 17 (previous)
 - **Open Positions widget — stage breakdown + active-only count**: Backend `get_open_positions` now filters applicants to pre-selection stages only (`new_lead`, `qualified`, `hr_interview`, `manager_interview`, `hold`) — anyone at `selected` / `three_months` / `joined` / `rejected` is excluded. Each row now carries `stage_breakdown` (per-stage counts) which the dashboard renders as colour-coded pills (e.g. "New: 2", "HR: 1").
 - **Editable Role on Lead Detail (every stage)**: Lead Detail badge is clickable at all stages. New "Assign Role / Change" dialog (`lead-job-role-dialog`) fetches jobs filtered by the candidate's segment (HO vs Franchise) and PUTs `{job_id}` to `/api/leads/{id}`. Empty selection unassigns. `LeadUpdate.job_id` added; empty-string handled as `$unset`. Update response is now enriched with fresh `job_role`.
 

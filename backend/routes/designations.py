@@ -182,6 +182,21 @@ _FRANCHISE_HINTS = {"technician", "service advisor", "branch manager", "franchis
 
 async def seed_default_designations():
     """Insert any missing default designations and backfill office_type on legacy rows."""
+    # Fix legacy single-field unique index (name_lower_1) so duplicate names are
+    # allowed across different office_types.
+    try:
+        await db.designations.drop_index("name_lower_1")
+    except Exception:
+        pass
+    try:
+        await db.designations.create_index(
+            [("name_lower", 1), ("office_type", 1)],
+            unique=True,
+            name="name_lower_office_type_unique",
+        )
+    except Exception:
+        pass
+
     # Backfill office_type for legacy docs
     legacy_count = await db.designations.count_documents({"office_type": {"$exists": False}})
     if legacy_count:
