@@ -24,7 +24,12 @@ class LeadCreate(BaseModel):
     source: str = "manual"
     assigned_to: Optional[str] = None
     is_technician: bool = False
-    job_id: Optional[str] = None
+    job_id: Optional[str] = None  # deprecated — kept for backward compat
+    designation_id: Optional[str] = None
+    job_role: Optional[str] = None
+    min_salary: Optional[float] = None
+    max_salary: Optional[float] = None
+    description: Optional[str] = None
 
 
 class LeadUpdate(BaseModel):
@@ -37,6 +42,10 @@ class LeadUpdate(BaseModel):
     is_technician: Optional[bool] = None
     job_id: Optional[str] = None
     job_role: Optional[str] = None
+    designation_id: Optional[str] = None
+    min_salary: Optional[float] = None
+    max_salary: Optional[float] = None
+    description: Optional[str] = None
 
 
 class StageTransition(BaseModel):
@@ -219,11 +228,38 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
 async def create_lead(data: LeadCreate, current_user: dict = Depends(get_current_user)):
     lead_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    payload = data.model_dump()
+
+    # Resolve designation -> auto-fill job_role and is_technician
+    if payload.get("designation_id"):
+        desg = await db.designations.find_one({"id": payload["designation_id"]}, {"_id": 0})
+        if not desg:
+            raise HTTPException(status_code=404, detail="Designation not found")
+        if not desg.get("active", True):
+            raise HTTPException(status_code=400, detail="Designation is inactive")
+        # Auto-fill role + segment from designation
+        payload["job_role"] = desg.get("name") or payload.get("job_role")
+        if desg.get("office_type") == "franchise":
+            payload["is_technician"] = True
+        elif desg.get("office_type") == "head_office":
+            payload["is_technician"] = False
+
+    # Validate salary range
+    if payload.get("min_salary") is not None and payload.get("max_salary") is not None:
+        if payload["min_salary"] > payload["max_salary"]:
+            raise HTTPException(status_code=400, detail="Min salary cannot exceed max salary")
+
+    # Drop null/empty designation_id to avoid storing empty string
+    if not payload.get("designation_id"):
+        payload.pop("designation_id", None)
+    if not payload.get("job_role"):
+        payload.pop("job_role", None)
+
     lead = {
         "id": lead_id,
-        **data.model_dump(),
+        **payload,
         "current_stage": "new_lead",
-        "previous_stage": None,  # used to resume from hold
+        "previous_stage": None,
         "total_calls": 0,
         "last_call_date": None,
         "created_by": current_user["id"],
@@ -270,6 +306,26 @@ async def update_lead(lead_id: str, data: LeadUpdate, current_user: dict = Depen
         unset_fields["job_role"] = ""
     elif "job_role" in update_data:
         update_data["job_role"] = update_data["job_role"].strip()
+    # Designation handling: auto-fill job_role + is_technician from designation
+    if data.model_fields_set and "designation_id" in data.model_fields_set and (data.designation_id is None or data.designation_id == ""):
+        update_data.pop("designation_id", None)
+        unset_fields["designation_id"] = ""
+    elif update_data.get("designation_id"):
+        desg = await db.designations.find_one({"id": update_data["designation_id"]}, {"_id": 0})
+        if not desg:
+            raise HTTPException(status_code=404, detail="Designation not found")
+        # Auto-fill role + is_technician from the new designation
+        if not update_data.get("job_role"):
+            update_data["job_role"] = desg.get("name")
+        if desg.get("office_type") == "franchise":
+            update_data["is_technician"] = True
+        elif desg.get("office_type") == "head_office":
+            update_data["is_technician"] = False
+    # Salary validation
+    if "min_salary" in update_data and "max_salary" in update_data:
+        if update_data["min_salary"] is not None and update_data["max_salary"] is not None:
+            if update_data["min_salary"] > update_data["max_salary"]:
+                raise HTTPException(status_code=400, detail="Min salary cannot exceed max salary")
     if not update_data and not unset_fields:
         raise HTTPException(status_code=400, detail="No data to update")
     # Validate job_id exists if provided

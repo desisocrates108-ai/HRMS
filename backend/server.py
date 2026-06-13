@@ -30,6 +30,7 @@ from routes.design_requests import router as design_requests_router
 from routes.offer_letters import router as offer_letters_router
 from routes.admin_tools import router as admin_tools_router
 from routes.designations import router as designations_router, seed_default_designations
+from routes.hirings import router as hirings_router
 from routes.candidate_forms import router as candidate_forms_router
 from routes.employees import migrate_employees_to_pipeline
 from database import client, db
@@ -61,6 +62,7 @@ api_router.include_router(design_requests_router, prefix="/design-requests", tag
 api_router.include_router(offer_letters_router, prefix="/offer-letters", tags=["OfferLetters"])
 api_router.include_router(admin_tools_router, prefix="/admin", tags=["Admin"])
 api_router.include_router(designations_router, prefix="/designations", tags=["Designations"])
+api_router.include_router(hirings_router, prefix="/hirings", tags=["Hirings"])
 api_router.include_router(candidate_forms_router, prefix="/candidate-forms", tags=["CandidateForms"])
 
 

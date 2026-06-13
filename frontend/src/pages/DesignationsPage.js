@@ -17,7 +17,7 @@ export default function DesignationsPage() {
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: '', department: '', description: '', active: true });
+  const [form, setForm] = useState({ name: '', office_type: 'head_office', department: '', description: '', active: true });
 
   useEffect(() => { fetchData(); }, []);
 
@@ -32,7 +32,7 @@ export default function DesignationsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', department: '', description: '', active: true });
+    setForm({ name: '', office_type: 'head_office', department: '', description: '', active: true });
     setDialogOpen(true);
   };
 
@@ -40,6 +40,7 @@ export default function DesignationsPage() {
     setEditing(d);
     setForm({
       name: d.name || '',
+      office_type: d.office_type || 'head_office',
       department: d.department || '',
       description: d.description || '',
       active: d.active !== false,
@@ -49,6 +50,7 @@ export default function DesignationsPage() {
 
   const submit = async () => {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
+    if (!form.office_type) { toast.error('Office Type is required'); return; }
     try {
       if (editing) {
         await API.put(`/designations/${editing.id}`, form);
@@ -56,6 +58,7 @@ export default function DesignationsPage() {
       } else {
         await API.post('/designations', {
           name: form.name,
+          office_type: form.office_type,
           department: form.department || null,
           description: form.description || null,
         });
@@ -104,7 +107,7 @@ export default function DesignationsPage() {
           <h1 className="text-xl md:text-2xl font-heading font-semibold text-slate-900 flex items-center gap-2">
             <Briefcase className="w-5 h-5" /> Designations
           </h1>
-          <p className="text-sm text-slate-500">{items.length} designation{items.length !== 1 ? 's' : ''} · used across Jobs & Employees</p>
+          <p className="text-sm text-slate-500">{items.length} designation{items.length !== 1 ? 's' : ''} · used in Lead forms and the Hirings module</p>
         </div>
         <Button onClick={openCreate} className="bg-blue-700 hover:bg-blue-800 active:scale-[0.98]" data-testid="create-designation-button">
           <Plus className="w-4 h-4 mr-1" /> Add Designation
@@ -135,8 +138,14 @@ export default function DesignationsPage() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium text-slate-900 truncate">{d.name}</p>
+                      <Badge
+                        className={`text-[10px] border-0 ${d.office_type === 'franchise' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}
+                        data-testid={`designation-office-type-${d.id}`}
+                      >
+                        {d.office_type === 'franchise' ? 'Franchise' : 'Head Office'}
+                      </Badge>
                       {!d.active && <Badge variant="outline" className="text-xs text-slate-500">Inactive</Badge>}
                     </div>
                     {d.department && <p className="text-xs text-slate-500 mt-0.5">Dept: {d.department}</p>}
@@ -169,6 +178,19 @@ export default function DesignationsPage() {
             <div>
               <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Name *</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Service Advisor" className="mt-1" data-testid="designation-name-input" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Office Type *</Label>
+              <select
+                value={form.office_type}
+                onChange={(e) => setForm({ ...form, office_type: e.target.value })}
+                className="mt-1 w-full border border-slate-200 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                data-testid="designation-office-type-select"
+              >
+                <option value="head_office">Head Office</option>
+                <option value="franchise">Franchise</option>
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">Determines which Hiring section this designation shows up under.</p>
             </div>
             <div>
               <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Department</Label>

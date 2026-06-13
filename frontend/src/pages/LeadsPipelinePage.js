@@ -50,7 +50,6 @@ export default function LeadsPipelinePage({ pipelineMode }) {
 
   const [leads, setLeads] = useState([]);
   const [users, setUsers] = useState([]);
-  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeStage, setActiveStage] = useState(stageParam || 'new_lead');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -63,22 +62,25 @@ export default function LeadsPipelinePage({ pipelineMode }) {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, lead: null });
   const [form, setForm] = useState({
     name: '', phone: '', email: '', location_city: '', location_area: '',
-    source: 'manual', assigned_to: '', is_technician: isTechnicianMode, job_id: '',
+    source: 'manual', assigned_to: '', is_technician: isTechnicianMode,
+    designation_id: '', min_salary: '', max_salary: '', description: '',
   });
+  const [designations, setDesignations] = useState([]);
 
   useEffect(() => { fetchData(); }, [pipelineMode]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [leadsRes, usersRes, jobsRes] = await Promise.all([
+      const officeType = isTechnicianMode ? 'franchise' : 'head_office';
+      const [leadsRes, usersRes, desgRes] = await Promise.all([
         API.get('/leads', { params: { is_technician: isTechnicianMode } }),
         API.get('/users'),
-        API.get('/jobs'),
+        API.get('/designations', { params: { active_only: true, office_type: officeType } }),
       ]);
       setLeads(leadsRes.data);
       setUsers(usersRes.data);
-      setJobs(jobsRes.data);
+      setDesignations(desgRes.data || []);
     } catch { toast.error('Failed to load data'); }
     finally { setLoading(false); }
   };
@@ -88,13 +90,25 @@ export default function LeadsPipelinePage({ pipelineMode }) {
       const payload = { ...form, is_technician: isTechnicianMode };
       if (!payload.email) payload.email = null;
       if (!payload.assigned_to) payload.assigned_to = null;
-      if (!payload.job_id) payload.job_id = null;
       if (!payload.location_city) payload.location_city = null;
       if (!payload.location_area) payload.location_area = null;
+      if (!payload.designation_id) {
+        toast.error('Designation is required');
+        return;
+      }
+      payload.min_salary = payload.min_salary === '' ? null : parseFloat(payload.min_salary);
+      payload.max_salary = payload.max_salary === '' ? null : parseFloat(payload.max_salary);
+      if (payload.min_salary !== null && payload.max_salary !== null && payload.min_salary > payload.max_salary) {
+        toast.error('Min salary cannot exceed max salary');
+        return;
+      }
+      if (!payload.description) payload.description = null;
+      // job_id is fully removed from the Add Lead flow now
+      delete payload.job_id;
       await API.post('/leads', payload);
       toast.success('Lead created');
       setDialogOpen(false);
-      setForm({ name: '', phone: '', email: '', location_city: '', location_area: '', source: 'manual', assigned_to: '', is_technician: isTechnicianMode, job_id: '' });
+      setForm({ name: '', phone: '', email: '', location_city: '', location_area: '', source: 'manual', assigned_to: '', is_technician: isTechnicianMode, designation_id: '', min_salary: '', max_salary: '', description: '' });
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to create lead');
@@ -349,11 +363,49 @@ export default function LeadsPipelinePage({ pipelineMode }) {
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Job</Label>
-              <Select value={form.job_id} onValueChange={(v) => setForm({ ...form, job_id: v })}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Link to job (optional)" /></SelectTrigger>
-                <SelectContent>{jobs.map((j) => <SelectItem key={j.id} value={j.id}>{j.role} - {j.location}</SelectItem>)}</SelectContent>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Designation <span className="text-rose-600">*</span></Label>
+              <Select value={form.designation_id} onValueChange={(v) => setForm({ ...form, designation_id: v })}>
+                <SelectTrigger className="mt-1" data-testid="lead-designation-select"><SelectValue placeholder="Select designation" /></SelectTrigger>
+                <SelectContent>
+                  {designations.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-slate-400 italic">No designations for {isTechnicianMode ? 'Franchise' : 'Head Office'}</div>
+                  ) : designations.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Min Salary</Label>
+              <Input
+                type="number"
+                value={form.min_salary}
+                onChange={(e) => setForm({ ...form, min_salary: e.target.value })}
+                placeholder="e.g., 25000"
+                className="mt-1"
+                data-testid="lead-min-salary-input"
+                min="0"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Max Salary</Label>
+              <Input
+                type="number"
+                value={form.max_salary}
+                onChange={(e) => setForm({ ...form, max_salary: e.target.value })}
+                placeholder="e.g., 45000"
+                className="mt-1"
+                data-testid="lead-max-salary-input"
+                min="0"
+              />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Description</Label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Any notes about the role, skills required, or candidate context"
+                className="mt-1 w-full min-h-[70px] border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                data-testid="lead-description-input"
+              />
             </div>
           </div>
           <DialogFooter>

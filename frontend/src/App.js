@@ -7,6 +7,8 @@ import DashboardPage from '@/pages/DashboardPage';
 import BranchesPage from '@/pages/BranchesPage';
 import BranchDetailPage from '@/pages/BranchDetailPage';
 import JobsPage from '@/pages/JobsPage';
+import HiringsPage from '@/pages/HiringsPage';
+import HiringDesignationCandidatesPage from '@/pages/HiringDesignationCandidatesPage';
 import LeadsPipelinePage from '@/pages/LeadsPipelinePage';
 import LeadDetailPage from '@/pages/LeadDetailPage';
 import TaskManagerPage from '@/pages/TaskManagerPage';
@@ -58,7 +60,9 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/branches/:id" element={<BranchDetailPage />} />
-            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs" element={<Navigate to="/hirings" replace />} />
+            <Route path="/hirings" element={<HiringsPage />} />
+            <Route path="/hirings/:segment/designations/:designationId" element={<HiringDesignationCandidatesPage />} />
             <Route path="/leads" element={<Navigate to="/leads/head-office" replace />} />
             <Route path="/leads/head-office" element={<LeadsPipelinePage pipelineMode="head_office" />} />
             <Route path="/leads/franchise" element={<LeadsPipelinePage pipelineMode="technician" />} />
