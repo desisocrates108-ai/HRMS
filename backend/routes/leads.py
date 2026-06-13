@@ -35,6 +35,7 @@ class LeadUpdate(BaseModel):
     location_area: Optional[str] = None
     assigned_to: Optional[str] = None
     is_technician: Optional[bool] = None
+    job_id: Optional[str] = None
 
 
 class StageTransition(BaseModel):
@@ -255,15 +256,33 @@ async def create_lead(data: LeadCreate, current_user: dict = Depends(get_current
 
 @router.put("/{lead_id}")
 async def update_lead(lead_id: str, data: LeadUpdate, current_user: dict = Depends(get_current_user)):
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    if not update_data:
+    update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    # Allow explicit unset of job_id via empty string
+    if data.model_fields_set and "job_id" in data.model_fields_set and (data.job_id is None or data.job_id == ""):
+        update_data.pop("job_id", None)
+        await db.leads.update_one({"id": lead_id}, {"$unset": {"job_id": ""}})
+    if not update_data and not (data.model_fields_set and "job_id" in data.model_fields_set):
         raise HTTPException(status_code=400, detail="No data to update")
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.leads.update_one({"id": lead_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Lead not found")
+    # Validate job_id exists if provided
+    if update_data.get("job_id"):
+        job_exists = await db.jobs.find_one({"id": update_data["job_id"]}, {"_id": 0, "id": 1})
+        if not job_exists:
+            raise HTTPException(status_code=404, detail="Job not found")
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = await db.leads.update_one({"id": lead_id}, {"$set": update_data})
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Lead not found")
     await log_audit(current_user["id"], current_user["name"], "update", "lead", lead_id, update_data)
     lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    # Enrich with job_role
+    if lead.get("job_id"):
+        j = await db.jobs.find_one({"id": lead["job_id"]}, {"_id": 0, "role": 1})
+        lead["job_role"] = j.get("role") if j else None
+    else:
+        lead["job_role"] = None
     return lead
 
 

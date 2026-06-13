@@ -5,7 +5,11 @@
 - WhatsApp: 11za API (real httpx dispatch, fire-and-forget)
 - Public feedback: tokenized single-use links (no auth needed)
 
-## Feb 13, 2026 — Iteration 16 (latest)
+## Feb 13, 2026 — Iteration 17 (latest follow-up)
+- **Open Positions widget — stage breakdown + active-only count**: Backend `get_open_positions` now filters applicants to pre-selection stages only (`new_lead`, `qualified`, `hr_interview`, `manager_interview`, `hold`) — anyone at `selected` / `three_months` / `joined` / `rejected` is excluded. Each row now carries `stage_breakdown` (per-stage counts) which the dashboard renders as colour-coded pills (e.g. "New: 2", "HR: 1").
+- **Editable Role on Lead Detail (every stage)**: Lead Detail badge is clickable at all stages. New "Assign Role / Change" dialog (`lead-job-role-dialog`) fetches jobs filtered by the candidate's segment (HO vs Franchise) and PUTs `{job_id}` to `/api/leads/{id}`. Empty selection unassigns. `LeadUpdate.job_id` added; empty-string handled as `$unset`. Update response is now enriched with fresh `job_role`.
+
+## Feb 13, 2026 — Iteration 16
 - **Job Designation on Leads**: `/api/leads` and `/api/leads/{id}` enriched with `job_role`. Pipeline cards show role (slate-600 medium) or "Role not specified" (italic grey). Lead Detail page shows prominent blue badge below name (`data-testid=lead-job-role-badge`).
 - **Open Positions Dashboard Widget**: New card under Lead Split on CEO + HR dashboards with two columns (Head Office | Franchise). Format: "Role — N openings — M applicants". Openings = count of open jobs grouped by role; applicants = leads linked to those jobs, respecting dashboard date filter (`date_from`/`date_to`/`days`).
 - **Employee Code Manual Entry**: Removed auto-generation in the create API. `EmployeeCreate.employee_code` is now required (Pydantic). Returns 409 on duplicate (create + update). `EmployeeUpdate.employee_code` added; empty string rejected with 400. Unique partial index on `employees.employee_code` (idempotent). Add Employee dialog and Edit drawer both expose a required text input with client-side validation; backend error surfaced via toast.

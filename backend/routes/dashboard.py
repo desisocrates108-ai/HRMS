@@ -127,25 +127,37 @@ def _date_range_iso(date_from, date_to, days):
 async def get_open_positions(date_clause=None):
     """Build Open Positions widget data, grouped by designation.
 
+    Rules:
+    - A position is "open" as long as it has not reached `selected` for at least one applicant.
+      In practice, we still surface every OPEN job; the *applicants* count reflects only
+      candidates who have NOT yet reached selected/three_months/joined/rejected.
+    - `openings` = count of OPEN jobs grouped by (segment, role).
+    - `applicants` = count of leads linked to those jobs in ACTIVE stages.
+    - `stage_breakdown` = dict of stage -> count for active applicants only.
+    - Respects the dashboard date filter for applicant counting (lead.created_at).
+
     Returns:
         {
-            "head_office": [{"role": "...", "openings": N, "applicants": M}, ...],
-            "franchise":   [{"role": "...", "openings": N, "applicants": M}, ...],
+            "head_office": [
+                {"role": ..., "openings": N, "applicants": M,
+                 "stage_breakdown": {"new_lead": ..., "qualified": ..., "hr_interview": ..., "manager_interview": ..., "hold": ...}},
+                ...
+            ],
+            "franchise":   [...same shape...],
         }
-
-    `openings` = count of OPEN jobs with that role within the segment.
-    `applicants` = count of leads linked (via job_id) to those jobs.
-                   Respects the dashboard date filter (lead.created_at) when provided.
     """
+    # Active = pre-selection stages + hold
+    ACTIVE_STAGES = [
+        "new_lead", "qualified", "hr_interview", "manager_interview", "hold",
+    ]
+
     open_jobs = await db.jobs.find({"status": "open"}, {"_id": 0}).to_list(2000)
 
-    # Bucket: (segment, role) -> {"job_ids": [...], "openings": int}
     buckets: dict[tuple[str, str], dict] = {}
     for j in open_jobs:
         role = (j.get("role") or "").strip()
         if not role:
             continue
-        # Franchise jobs are those of type 'branch' (also covered by branch_id)
         is_franchise = j.get("type") == "branch" or bool(j.get("branch_id"))
         segment = "franchise" if is_franchise else "head_office"
         key = (segment, role)
@@ -153,20 +165,31 @@ async def get_open_positions(date_clause=None):
         b["job_ids"].append(j["id"])
         b["openings"] += 1
 
-    # Compute applicant counts per bucket (one Mongo query per bucket, small set)
     result = {"head_office": [], "franchise": []}
     for (segment, role), b in buckets.items():
-        lead_q = {"job_id": {"$in": b["job_ids"]}, "deleted": {"$ne": True}}
+        lead_q = {
+            "job_id": {"$in": b["job_ids"]},
+            "deleted": {"$ne": True},
+            "current_stage": {"$in": ACTIVE_STAGES},
+        }
         if date_clause:
             lead_q["created_at"] = date_clause
-        applicants = await db.leads.count_documents(lead_q)
+        # Pull only the stage column to compute breakdown + total
+        cursor = db.leads.find(lead_q, {"_id": 0, "current_stage": 1})
+        stage_breakdown = {s: 0 for s in ACTIVE_STAGES}
+        total = 0
+        async for ld in cursor:
+            stg = ld.get("current_stage")
+            if stg in stage_breakdown:
+                stage_breakdown[stg] += 1
+                total += 1
         result[segment].append({
             "role": role,
             "openings": b["openings"],
-            "applicants": applicants,
+            "applicants": total,
+            "stage_breakdown": stage_breakdown,
         })
 
-    # Sort by openings desc, then role
     for segment in result:
         result[segment].sort(key=lambda r: (-r["openings"], r["role"].lower()))
     return result

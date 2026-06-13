@@ -152,6 +152,21 @@ function OpenPositionsCard({ data }) {
   const frRows = data.franchise || [];
   if (hoRows.length === 0 && frRows.length === 0) return null;
 
+  const STAGE_LABELS = {
+    new_lead: 'New',
+    qualified: 'Qualified',
+    hr_interview: 'HR',
+    manager_interview: 'Manager',
+    hold: 'Hold',
+  };
+  const STAGE_COLORS = {
+    new_lead: 'bg-slate-100 text-slate-700',
+    qualified: 'bg-sky-100 text-sky-700',
+    hr_interview: 'bg-amber-100 text-amber-700',
+    manager_interview: 'bg-violet-100 text-violet-700',
+    hold: 'bg-rose-100 text-rose-700',
+  };
+
   const Section = ({ title, icon: Icon, rows, segmentKey }) => (
     <div className="flex flex-col gap-2 min-w-0" data-testid={`open-positions-${segmentKey}`}>
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -162,22 +177,43 @@ function OpenPositionsCard({ data }) {
       {rows.length === 0 ? (
         <p className="text-xs text-slate-400 italic py-2">No open positions</p>
       ) : (
-        <div className="space-y-1.5">
-          {rows.map((r) => (
-            <button
-              key={`${segmentKey}-${r.role}`}
-              onClick={() => nav('/jobs')}
-              className="w-full text-left p-2.5 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
-              data-testid={`open-position-row-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
-            >
-              <p className="text-sm font-medium text-slate-900 truncate">{r.role}</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
-                <span className="mx-1.5 text-slate-300">·</span>
-                <span className="text-emerald-700 font-semibold">{r.applicants}</span> {r.applicants === 1 ? 'applicant' : 'applicants'}
-              </p>
-            </button>
-          ))}
+        <div className="space-y-2">
+          {rows.map((r) => {
+            const sb = r.stage_breakdown || {};
+            const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
+            return (
+              <button
+                key={`${segmentKey}-${r.role}`}
+                onClick={() => nav('/jobs')}
+                className="w-full text-left p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                data-testid={`open-position-row-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-900 truncate">{r.role}</p>
+                  <p className="text-xs text-slate-500 shrink-0">
+                    <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
+                    <span className="mx-1 text-slate-300">·</span>
+                    <span className="text-emerald-700 font-semibold">{r.applicants}</span> active
+                  </p>
+                </div>
+                {activeStages.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {activeStages.map(([stg, n]) => (
+                      <span
+                        key={stg}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'}`}
+                        data-testid={`stage-pill-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}-${stg}`}
+                      >
+                        {STAGE_LABELS[stg] || stg}: {n}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants yet</p>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

@@ -113,6 +113,11 @@ export default function LeadDetailPage() {
   const [formStatus, setFormStatus] = useState({ status: 'not_sent' });
   const [sendingForm, setSendingForm] = useState(false);
   const [sendFormResult, setSendFormResult] = useState(null);
+  // Role / Job assignment
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [jobs, setJobs] = useState([]);
+  const [selectedJobId, setSelectedJobId] = useState('');
+  const [savingRole, setSavingRole] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -136,6 +141,40 @@ export default function LeadDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const openRoleDialog = async () => {
+    setSelectedJobId(lead?.job_id || '');
+    setRoleDialogOpen(true);
+    if (jobs.length === 0) {
+      try {
+        const { data } = await API.get('/jobs');
+        // Filter by the appropriate segment (technician = franchise/branch)
+        const isTech = !!lead?.is_technician;
+        const filtered = (data || []).filter(j => {
+          const isFranchise = j.type === 'branch' || !!j.branch_id;
+          return isTech ? isFranchise : !isFranchise;
+        });
+        setJobs(filtered);
+      } catch {
+        toast.error('Could not load jobs');
+      }
+    }
+  };
+
+  const saveRole = async () => {
+    setSavingRole(true);
+    try {
+      const payload = { job_id: selectedJobId || '' };
+      const { data } = await API.put(`/leads/${id}`, payload);
+      setLead(data);
+      toast.success(selectedJobId ? 'Role updated' : 'Role removed');
+      setRoleDialogOpen(false);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to update role');
+    } finally {
+      setSavingRole(false);
+    }
+  };
 
   const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -246,20 +285,36 @@ export default function LeadDetailPage() {
               <h2 className="text-xl font-heading font-semibold text-slate-900">{lead.name}</h2>
               <div className="mt-1.5">
                 {lead.job_role ? (
-                  <Badge
-                    className="bg-blue-700 text-white border-0 text-sm font-medium px-3 py-1"
-                    data-testid="lead-job-role-badge"
+                  <button
+                    type="button"
+                    onClick={openRoleDialog}
+                    className="inline-flex items-center gap-1.5 group focus:outline-none"
+                    data-testid="lead-job-role-edit-btn"
                   >
-                    {lead.job_role}
-                  </Badge>
+                    <Badge
+                      className="bg-blue-700 text-white border-0 text-sm font-medium px-3 py-1 group-hover:bg-blue-800 transition-colors"
+                      data-testid="lead-job-role-badge"
+                    >
+                      {lead.job_role}
+                    </Badge>
+                    <span className="text-xs text-blue-700 underline-offset-2 group-hover:underline">Change</span>
+                  </button>
                 ) : (
-                  <Badge
-                    variant="outline"
-                    className="bg-slate-50 text-slate-400 italic border-slate-200 text-sm px-3 py-1"
-                    data-testid="lead-job-role-badge"
+                  <button
+                    type="button"
+                    onClick={openRoleDialog}
+                    className="inline-flex items-center gap-1.5 group focus:outline-none"
+                    data-testid="lead-job-role-edit-btn"
                   >
-                    Role not specified
-                  </Badge>
+                    <Badge
+                      variant="outline"
+                      className="bg-slate-50 text-slate-400 italic border-slate-200 text-sm px-3 py-1 group-hover:border-blue-400 group-hover:text-blue-600 transition-colors"
+                      data-testid="lead-job-role-badge"
+                    >
+                      Role not specified
+                    </Badge>
+                    <span className="text-xs text-blue-700 underline-offset-2 group-hover:underline">Assign role</span>
+                  </button>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-slate-500">
@@ -783,6 +838,50 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setMedicalOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveMedical} className="bg-blue-700 hover:bg-blue-800" data-testid="save-medical-button">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign/Change Role Dialog */}
+      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+        <DialogContent className="max-w-md" data-testid="lead-role-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading">{lead?.job_role ? 'Change Role' : 'Assign Role'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Pick the job opening to link this candidate to. The designation will reflect on the lead card and across the dashboard.
+            </p>
+            <div>
+              <Label className="text-xs text-slate-500">Job Opening ({lead?.is_technician ? 'Franchise' : 'Head Office'})</Label>
+              <select
+                className="mt-1 w-full border border-slate-200 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={selectedJobId}
+                onChange={(e) => setSelectedJobId(e.target.value)}
+                data-testid="lead-role-job-select"
+              >
+                <option value="">— No role / Unassign —</option>
+                {jobs.map(j => (
+                  <option key={j.id} value={j.id}>
+                    {j.role}{j.location_city ? ` · ${j.location_city}` : ''}{j.status !== 'open' ? ` (${j.status})` : ''}
+                  </option>
+                ))}
+              </select>
+              {jobs.length === 0 && (
+                <p className="text-xs text-slate-400 italic mt-1.5">No jobs available for this segment</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleDialogOpen(false)} data-testid="lead-role-cancel">Cancel</Button>
+            <Button
+              className="bg-blue-700 hover:bg-blue-800"
+              onClick={saveRole}
+              disabled={savingRole}
+              data-testid="lead-role-save"
+            >
+              {savingRole ? 'Saving…' : 'Save'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
