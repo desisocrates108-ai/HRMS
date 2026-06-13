@@ -153,7 +153,7 @@ function OpenPositionsCard({ data }) {
   const hoRows = data.head_office || [];
   const frRows = data.franchise || [];
   const summary = data.summary || { head_office: { openings: 0, applicants: 0, roles: 0 }, franchise: { openings: 0, applicants: 0, roles: 0 }, total: { openings: 0, applicants: 0, roles: 0 } };
-  if (hoRows.length === 0 && frRows.length === 0) return null;
+  const isEmpty = hoRows.length === 0 && frRows.length === 0;
 
   const STAGE_LABELS = {
     new_lead: 'New',
@@ -301,10 +301,26 @@ function OpenPositionsCard({ data }) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Section title="Head Office" icon={Building2} rows={hoRows} segmentKey="head_office" segSummary={summary.head_office} />
-            <Section title="Franchise" icon={Users} rows={frRows} segmentKey="franchise" segSummary={summary.franchise} />
-          </div>
+          {isEmpty ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center" data-testid="open-positions-empty-state">
+              <Briefcase className="w-8 h-8 text-slate-300 mb-2" />
+              <p className="text-sm font-medium text-slate-600">No open job positions yet</p>
+              <p className="text-xs text-slate-400 mt-1">Create a job opening to start tracking applicants per role.</p>
+              <button
+                type="button"
+                onClick={() => nav('/jobs')}
+                className="mt-3 text-xs font-medium text-blue-700 hover:underline"
+                data-testid="open-positions-go-to-jobs"
+              >
+                Go to Jobs →
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Section title="Head Office" icon={Building2} rows={hoRows} segmentKey="head_office" segSummary={summary.head_office} />
+              <Section title="Franchise" icon={Users} rows={frRows} segmentKey="franchise" segSummary={summary.franchise} />
+            </div>
+          )}
         </CardContent>
       </Card>
 
