@@ -147,9 +147,12 @@ function LeadSplitCards({ split }) {
 
 function OpenPositionsCard({ data }) {
   const nav = useNavigate();
+  const [showAll, setShowAll] = useState(false);
+  const [detail, setDetail] = useState(null); // { role, segmentKey, jobs, segmentTitle }
   if (!data) return null;
   const hoRows = data.head_office || [];
   const frRows = data.franchise || [];
+  const summary = data.summary || { head_office: { openings: 0, applicants: 0, roles: 0 }, franchise: { openings: 0, applicants: 0, roles: 0 }, total: { openings: 0, applicants: 0, roles: 0 } };
   if (hoRows.length === 0 && frRows.length === 0) return null;
 
   const STAGE_LABELS = {
@@ -167,88 +170,238 @@ function OpenPositionsCard({ data }) {
     hold: 'bg-rose-100 text-rose-700',
   };
 
-  const Section = ({ title, icon: Icon, rows, segmentKey }) => {
+  const ROW_LIMIT = 5;
+
+  const Section = ({ title, icon: Icon, rows, segmentKey, segSummary }) => {
     const targetPath = segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
     const goTo = (role, stage) => {
       const params = new URLSearchParams({ job_role: role });
       if (stage) params.set('stage', stage);
       nav(`${targetPath}?${params.toString()}`);
     };
+    const visible = showAll ? rows : rows.slice(0, ROW_LIMIT);
+    const hiddenCount = Math.max(0, rows.length - visible.length);
     return (
-    <div className="flex flex-col gap-2 min-w-0" data-testid={`open-positions-${segmentKey}`}>
-      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-        <Icon className="w-3.5 h-3.5" />
-        <span>{title}</span>
-        <Badge variant="outline" className="text-[10px] ml-auto">{rows.length}</Badge>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-xs text-slate-400 italic py-2">No open positions</p>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((r) => {
-            const sb = r.stage_breakdown || {};
-            const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
-            return (
-              <div
-                key={`${segmentKey}-${r.role}`}
-                className="p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
-                data-testid={`open-position-row-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
-              >
-                <button
-                  type="button"
-                  onClick={() => goTo(r.role)}
-                  className="w-full flex items-baseline justify-between gap-2 text-left group"
-                  data-testid={`open-position-role-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}`}
+      <div className="flex flex-col gap-2 min-w-0" data-testid={`open-positions-${segmentKey}`}>
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <Icon className="w-3.5 h-3.5" />
+          <span>{title}</span>
+          <Badge variant="outline" className="text-[10px] ml-auto">
+            {segSummary.openings} openings · {segSummary.applicants} active
+          </Badge>
+        </div>
+        {rows.length === 0 ? (
+          <p className="text-xs text-slate-400 italic py-2">No open positions</p>
+        ) : (
+          <div className="space-y-2">
+            {visible.map((r) => {
+              const sb = r.stage_breakdown || {};
+              const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
+              const slug = r.role.replace(/\s+/g, '-').toLowerCase();
+              return (
+                <div
+                  key={`${segmentKey}-${r.role}`}
+                  className="p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                  data-testid={`open-position-row-${segmentKey}-${slug}`}
                 >
-                  <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-700">{r.role}</p>
-                  <p className="text-xs text-slate-500 shrink-0">
-                    <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
-                    <span className="mx-1 text-slate-300">·</span>
-                    <span className="text-emerald-700 font-semibold">{r.applicants}</span> active
-                  </p>
-                </button>
-                {activeStages.length > 0 ? (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {activeStages.map(([stg, n]) => (
+                  <div className="flex items-baseline justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => goTo(r.role)}
+                      className="text-left group min-w-0 flex-1"
+                      data-testid={`open-position-role-${segmentKey}-${slug}`}
+                    >
+                      <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-700">{r.role}</p>
+                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <p className="text-xs text-slate-500">
+                        <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
+                        <span className="mx-1 text-slate-300">·</span>
+                        <span className="text-emerald-700 font-semibold">{r.applicants}</span> active
+                      </p>
                       <button
                         type="button"
-                        key={stg}
-                        onClick={(e) => { e.stopPropagation(); goTo(r.role, stg); }}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400 transition`}
-                        data-testid={`stage-pill-${segmentKey}-${r.role.replace(/\s+/g, '-').toLowerCase()}-${stg}`}
-                        title={`See ${r.role} candidates in ${STAGE_LABELS[stg] || stg}`}
+                        onClick={() => setDetail({ role: r.role, segmentKey, segmentTitle: title, jobs: r.jobs || [] })}
+                        className="text-[11px] text-blue-700 hover:underline whitespace-nowrap"
+                        data-testid={`open-position-detail-${segmentKey}-${slug}`}
                       >
-                        {STAGE_LABELS[stg] || stg}: {n}
+                        Details
                       </button>
-                    ))}
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants yet</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                  {activeStages.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {activeStages.map(([stg, n]) => (
+                        <button
+                          type="button"
+                          key={stg}
+                          onClick={(e) => { e.stopPropagation(); goTo(r.role, stg); }}
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400 transition`}
+                          data-testid={`stage-pill-${segmentKey}-${slug}-${stg}`}
+                          title={`See ${r.role} candidates in ${STAGE_LABELS[stg] || stg}`}
+                        >
+                          {STAGE_LABELS[stg] || stg}: {n}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants yet</p>
+                  )}
+                </div>
+              );
+            })}
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="w-full text-xs text-blue-700 hover:underline py-1.5"
+                data-testid={`open-positions-show-all-${segmentKey}`}
+              >
+                Show {hiddenCount} more {hiddenCount === 1 ? 'role' : 'roles'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     );
   };
 
+  const totalRoles = summary.total.roles;
+
   return (
-    <Card className="border-slate-200 shadow-none" data-testid="open-positions-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium flex items-center gap-2">
-          <Briefcase className="w-4 h-4 text-blue-700" />
-          Open Positions
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Section title="Head Office" icon={Building2} rows={hoRows} segmentKey="head_office" />
-          <Section title="Franchise" icon={Users} rows={frRows} segmentKey="franchise" />
+    <>
+      <Card className="border-slate-200 shadow-none" data-testid="open-positions-card">
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-blue-700" />
+              Open Positions
+            </CardTitle>
+            <div className="flex items-center gap-2 flex-wrap" data-testid="open-positions-summary">
+              <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">
+                <span className="font-bold mr-1">{summary.total.openings}</span> openings
+              </Badge>
+              <Badge className="bg-emerald-50 text-emerald-700 border-0 text-xs">
+                <span className="font-bold mr-1">{summary.total.applicants}</span> active candidates
+              </Badge>
+              <Badge variant="outline" className="text-xs text-slate-600">
+                {totalRoles} {totalRoles === 1 ? 'role' : 'roles'}
+              </Badge>
+              {(hoRows.length + frRows.length) > ROW_LIMIT * 2 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="text-xs text-blue-700 hover:underline"
+                  data-testid="open-positions-toggle-all"
+                >
+                  {showAll ? 'Collapse' : 'View all'}
+                </button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Section title="Head Office" icon={Building2} rows={hoRows} segmentKey="head_office" segSummary={summary.head_office} />
+            <Section title="Franchise" icon={Users} rows={frRows} segmentKey="franchise" segSummary={summary.franchise} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <OpenPositionDetailDialog
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        detail={detail}
+        nav={nav}
+        STAGE_LABELS={STAGE_LABELS}
+        STAGE_COLORS={STAGE_COLORS}
+      />
+    </>
+  );
+}
+
+function OpenPositionDetailDialog({ open, onClose, detail, nav, STAGE_LABELS, STAGE_COLORS }) {
+  if (!detail) return null;
+  const targetPath = detail.segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
+  const goTo = (role, stage) => {
+    const params = new URLSearchParams({ job_role: role });
+    if (stage) params.set('stage', stage);
+    nav(`${targetPath}?${params.toString()}`);
+    onClose();
+  };
+  const jobs = detail.jobs || [];
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="open-positions-detail-dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading">
+            {detail.role} <span className="text-slate-400 font-normal text-sm">· {detail.segmentTitle}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <Badge className="bg-blue-50 text-blue-700 border-0">
+              {jobs.length} {jobs.length === 1 ? 'opening' : 'openings'}
+            </Badge>
+            <Badge className="bg-emerald-50 text-emerald-700 border-0">
+              {jobs.reduce((sum, j) => sum + (j.applicants || 0), 0)} active candidates
+            </Badge>
+            <button
+              type="button"
+              onClick={() => goTo(detail.role)}
+              className="ml-auto text-xs text-blue-700 hover:underline"
+              data-testid="detail-see-all-candidates"
+            >
+              See all candidates →
+            </button>
+          </div>
+          <div className="space-y-2">
+            {jobs.map((j, idx) => {
+              const sb = j.stage_breakdown || {};
+              const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
+              const locLabel = [j.branch_name, j.location].filter(Boolean).join(' · ') || '—';
+              return (
+                <div
+                  key={j.id}
+                  className="p-3 border border-slate-200 rounded-md bg-white"
+                  data-testid={`detail-job-row-${idx}`}
+                >
+                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">Opening #{idx + 1}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        📍 {locLabel}
+                        {j.department && <span className="mx-1.5 text-slate-300">·</span>}
+                        {j.department && <span>{j.department}</span>}
+                      </p>
+                    </div>
+                    <div className="text-xs text-slate-600 shrink-0">
+                      <span className="text-emerald-700 font-semibold">{j.applicants || 0}</span> active
+                    </div>
+                  </div>
+                  {activeStages.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {activeStages.map(([stg, n]) => (
+                        <button
+                          type="button"
+                          key={stg}
+                          onClick={() => goTo(detail.role, stg)}
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400`}
+                        >
+                          {STAGE_LABELS[stg] || stg}: {n}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants on this opening yet</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
