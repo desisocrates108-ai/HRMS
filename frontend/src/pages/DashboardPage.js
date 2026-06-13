@@ -148,11 +148,11 @@ function LeadSplitCards({ split }) {
 function OpenPositionsCard({ data }) {
   const nav = useNavigate();
   const [showAll, setShowAll] = useState(false);
-  const [detail, setDetail] = useState(null); // { role, segmentKey, jobs, segmentTitle }
+  const [detail, setDetail] = useState(null); // { role, segmentKey, candidates_list, segmentTitle, job_locations, is_unassigned }
   if (!data) return null;
   const hoRows = data.head_office || [];
   const frRows = data.franchise || [];
-  const summary = data.summary || { head_office: { openings: 0, applicants: 0, roles: 0 }, franchise: { openings: 0, applicants: 0, roles: 0 }, total: { openings: 0, applicants: 0, roles: 0 } };
+  const summary = data.summary || { head_office: { candidates: 0, roles: 0 }, franchise: { candidates: 0, roles: 0 }, total: { candidates: 0, roles: 0 } };
   const isEmpty = hoRows.length === 0 && frRows.length === 0;
 
   const STAGE_LABELS = {
@@ -174,10 +174,12 @@ function OpenPositionsCard({ data }) {
 
   const Section = ({ title, icon: Icon, rows, segmentKey, segSummary }) => {
     const targetPath = segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
-    const goTo = (role, stage) => {
-      const params = new URLSearchParams({ job_role: role });
+    const goTo = (role, stage, isUnassigned) => {
+      const params = new URLSearchParams();
+      if (!isUnassigned) params.set('job_role', role);
       if (stage) params.set('stage', stage);
-      nav(`${targetPath}?${params.toString()}`);
+      const qs = params.toString();
+      nav(qs ? `${targetPath}?${qs}` : targetPath);
     };
     const visible = showAll ? rows : rows.slice(0, ROW_LIMIT);
     const hiddenCount = Math.max(0, rows.length - visible.length);
@@ -187,41 +189,42 @@ function OpenPositionsCard({ data }) {
           <Icon className="w-3.5 h-3.5" />
           <span>{title}</span>
           <Badge variant="outline" className="text-[10px] ml-auto">
-            {segSummary.openings} openings · {segSummary.applicants} active
+            {segSummary.candidates} active · {segSummary.roles} {segSummary.roles === 1 ? 'role' : 'roles'}
           </Badge>
         </div>
         {rows.length === 0 ? (
-          <p className="text-xs text-slate-400 italic py-2">No open positions</p>
+          <p className="text-xs text-slate-400 italic py-2">No candidates in pipeline</p>
         ) : (
           <div className="space-y-2">
             {visible.map((r) => {
               const sb = r.stage_breakdown || {};
               const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
-              const slug = r.role.replace(/\s+/g, '-').toLowerCase();
+              const slug = (r.role || 'unassigned').replace(/\s+/g, '-').toLowerCase();
               return (
                 <div
                   key={`${segmentKey}-${r.role}`}
-                  className="p-3 rounded-md border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                  className={`p-3 rounded-md border bg-white hover:bg-blue-50/30 transition-all ${r.is_unassigned ? 'border-dashed border-slate-300' : 'border-slate-200 hover:border-blue-300'}`}
                   data-testid={`open-position-row-${segmentKey}-${slug}`}
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => goTo(r.role)}
+                      onClick={() => goTo(r.role, undefined, r.is_unassigned)}
                       className="text-left group min-w-0 flex-1"
                       data-testid={`open-position-role-${segmentKey}-${slug}`}
                     >
-                      <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-700">{r.role}</p>
+                      <p className={`text-sm font-medium truncate group-hover:text-blue-700 ${r.is_unassigned ? 'italic text-slate-500' : 'text-slate-900'}`}>{r.role}</p>
+                      {r.job_locations && r.job_locations.length > 0 && (
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">📍 {r.job_locations.join(' · ')}</p>
+                      )}
                     </button>
                     <div className="flex items-center gap-2 shrink-0">
                       <p className="text-xs text-slate-500">
-                        <span className="text-blue-700 font-semibold">{r.openings}</span> {r.openings === 1 ? 'opening' : 'openings'}
-                        <span className="mx-1 text-slate-300">·</span>
-                        <span className="text-emerald-700 font-semibold">{r.applicants}</span> active
+                        <span className="text-emerald-700 font-semibold">{r.candidates}</span> {r.candidates === 1 ? 'candidate' : 'candidates'}
                       </p>
                       <button
                         type="button"
-                        onClick={() => setDetail({ role: r.role, segmentKey, segmentTitle: title, jobs: r.jobs || [] })}
+                        onClick={() => setDetail({ role: r.role, segmentKey, segmentTitle: title, candidates_list: r.candidates_list || [], job_locations: r.job_locations || [], is_unassigned: r.is_unassigned })}
                         className="text-[11px] text-blue-700 hover:underline whitespace-nowrap"
                         data-testid={`open-position-detail-${segmentKey}-${slug}`}
                       >
@@ -229,13 +232,13 @@ function OpenPositionsCard({ data }) {
                       </button>
                     </div>
                   </div>
-                  {activeStages.length > 0 ? (
+                  {activeStages.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {activeStages.map(([stg, n]) => (
                         <button
                           type="button"
                           key={stg}
-                          onClick={(e) => { e.stopPropagation(); goTo(r.role, stg); }}
+                          onClick={(e) => { e.stopPropagation(); goTo(r.role, stg, r.is_unassigned); }}
                           className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400 transition`}
                           data-testid={`stage-pill-${segmentKey}-${slug}-${stg}`}
                           title={`See ${r.role} candidates in ${STAGE_LABELS[stg] || stg}`}
@@ -244,8 +247,6 @@ function OpenPositionsCard({ data }) {
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants yet</p>
                   )}
                 </div>
               );
@@ -278,11 +279,8 @@ function OpenPositionsCard({ data }) {
               Open Positions
             </CardTitle>
             <div className="flex items-center gap-2 flex-wrap" data-testid="open-positions-summary">
-              <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">
-                <span className="font-bold mr-1">{summary.total.openings}</span> openings
-              </Badge>
               <Badge className="bg-emerald-50 text-emerald-700 border-0 text-xs">
-                <span className="font-bold mr-1">{summary.total.applicants}</span> active candidates
+                <span className="font-bold mr-1">{summary.total.candidates}</span> active candidates
               </Badge>
               <Badge variant="outline" className="text-xs text-slate-600">
                 {totalRoles} {totalRoles === 1 ? 'role' : 'roles'}
@@ -304,15 +302,15 @@ function OpenPositionsCard({ data }) {
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center py-8 text-center" data-testid="open-positions-empty-state">
               <Briefcase className="w-8 h-8 text-slate-300 mb-2" />
-              <p className="text-sm font-medium text-slate-600">No open job positions yet</p>
-              <p className="text-xs text-slate-400 mt-1">Create a job opening to start tracking applicants per role.</p>
+              <p className="text-sm font-medium text-slate-600">No active candidates in pipeline</p>
+              <p className="text-xs text-slate-400 mt-1">Once leads are added (manually or from a job opening), they show up here until they reach the Selected stage.</p>
               <button
                 type="button"
-                onClick={() => nav('/jobs')}
+                onClick={() => nav('/leads')}
                 className="mt-3 text-xs font-medium text-blue-700 hover:underline"
-                data-testid="open-positions-go-to-jobs"
+                data-testid="open-positions-go-to-leads"
               >
-                Go to Jobs →
+                Go to Leads →
               </button>
             </div>
           ) : (
@@ -338,88 +336,60 @@ function OpenPositionsCard({ data }) {
 
 function OpenPositionDetailDialog({ open, onClose, detail, nav, STAGE_LABELS, STAGE_COLORS }) {
   if (!detail) return null;
-  const targetPath = detail.segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
-  const goTo = (role, stage) => {
-    const params = new URLSearchParams({ job_role: role });
-    if (stage) params.set('stage', stage);
-    nav(`${targetPath}?${params.toString()}`);
-    onClose();
-  };
-  const jobs = detail.jobs || [];
+  const candidates = detail.candidates_list || [];
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="open-positions-detail-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading">
-            {detail.role} <span className="text-slate-400 font-normal text-sm">· {detail.segmentTitle}</span>
+            <span className={detail.is_unassigned ? 'italic text-slate-500' : ''}>{detail.role}</span>
+            <span className="text-slate-400 font-normal text-sm"> · {detail.segmentTitle}</span>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <Badge className="bg-blue-50 text-blue-700 border-0">
-              {jobs.length} {jobs.length === 1 ? 'opening' : 'openings'}
-            </Badge>
+          <div className="flex items-center gap-2 text-sm text-slate-600 flex-wrap">
             <Badge className="bg-emerald-50 text-emerald-700 border-0">
-              {jobs.reduce((sum, j) => sum + (j.applicants || 0), 0)} active candidates
+              {candidates.length} active {candidates.length === 1 ? 'candidate' : 'candidates'}
             </Badge>
-            <button
-              type="button"
-              onClick={() => goTo(detail.role)}
-              className="ml-auto text-xs text-blue-700 hover:underline"
-              data-testid="detail-see-all-candidates"
-            >
-              See all candidates →
-            </button>
+            {detail.job_locations && detail.job_locations.length > 0 && (
+              <span className="text-xs text-slate-500">📍 {detail.job_locations.join(' · ')}</span>
+            )}
           </div>
-          <div className="space-y-2">
-            {jobs.map((j, idx) => {
-              const sb = j.stage_breakdown || {};
-              const activeStages = Object.entries(sb).filter(([, n]) => n > 0);
-              const locLabel = [j.branch_name, j.location].filter(Boolean).join(' · ') || '—';
-              return (
-                <div
-                  key={j.id}
-                  className="p-3 border border-slate-200 rounded-md bg-white"
-                  data-testid={`detail-job-row-${idx}`}
+          {candidates.length === 0 ? (
+            <p className="text-sm text-slate-400 italic py-6 text-center">No active candidates.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {candidates.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { nav(`/leads/${c.id}`); onClose(); }}
+                  className="w-full text-left flex items-center gap-3 p-2.5 border border-slate-200 rounded-md bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                  data-testid={`detail-candidate-row-${c.id}`}
                 >
-                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900">Opening #{idx + 1}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        📍 {locLabel}
-                        {j.department && <span className="mx-1.5 text-slate-300">·</span>}
-                        {j.department && <span>{j.department}</span>}
-                      </p>
-                    </div>
-                    <div className="text-xs text-slate-600 shrink-0">
-                      <span className="text-emerald-700 font-semibold">{j.applicants || 0}</span> active
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{c.name || '—'}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {c.phone || ''}
+                      {c.job_location && <span className="mx-1.5 text-slate-300">·</span>}
+                      {c.job_location && <span>📍 {c.job_location}</span>}
+                    </p>
                   </div>
-                  {activeStages.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {activeStages.map(([stg, n]) => (
-                        <button
-                          type="button"
-                          key={stg}
-                          onClick={() => goTo(detail.role, stg)}
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${STAGE_COLORS[stg] || 'bg-slate-100 text-slate-700'} hover:ring-1 hover:ring-blue-400`}
-                        >
-                          {STAGE_LABELS[stg] || stg}: {n}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic mt-1.5">No active applicants on this opening yet</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  <span
+                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${STAGE_COLORS[c.stage] || 'bg-slate-100 text-slate-700'}`}
+                  >
+                    {STAGE_LABELS[c.stage] || c.stage}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
+
 
 function DateFilterBar({ value, onChange }) {
   const opts = [

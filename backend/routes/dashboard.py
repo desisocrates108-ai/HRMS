@@ -125,31 +125,27 @@ def _date_range_iso(date_from, date_to, days):
 
 
 async def get_open_positions(date_clause=None):
-    """Build Open Positions widget data, grouped by designation.
+    """Open Positions widget — sourced from ACTIVE leads (not jobs).
 
-    Rules:
-    - A position is "open" as long as it has not reached `selected` for at least one applicant.
-      In practice, we still surface every OPEN job; the *applicants* count reflects only
-      candidates who have NOT yet reached selected/three_months/joined/rejected.
-    - `openings` = count of OPEN jobs grouped by (segment, role).
-    - `applicants` = count of leads linked to those jobs in ACTIVE stages.
-    - `stage_breakdown` = dict of stage -> count for active applicants only.
-    - `jobs` = per-job details so the UI can drill-down into individual openings.
-    - Respects the dashboard date filter for applicant counting (lead.created_at).
+    Any lead in Head Office or Franchise pipeline that has NOT reached
+    selected/three_months/joined/rejected is counted as an "open position
+    being filled". Leads added manually (without a linked job_id) are
+    bucketed under the role "Role not specified".
 
-    Returns shape:
+    Returns:
         {
             "summary": {
-                "head_office": {"openings": N, "applicants": M, "roles": K},
-                "franchise":   {"openings": N, "applicants": M, "roles": K},
-                "total":       {"openings": N, "applicants": M, "roles": K},
+                "head_office": {"candidates": N, "roles": K},
+                "franchise":   {"candidates": N, "roles": K},
+                "total":       {"candidates": N, "roles": K},
             },
             "head_office": [
-                {"role": ..., "openings": N, "applicants": M,
-                 "stage_breakdown": {...},
-                 "jobs": [{"id":..., "location":..., "branch_name":...,
-                           "department":..., "created_at":...,
-                           "applicants": Z, "stage_breakdown": {...}}, ...]},
+                {"role": ..., "candidates": M,
+                 "stage_breakdown": {"new_lead":..,"qualified":..,"hr_interview":..,"manager_interview":..,"hold":..},
+                 "is_unassigned": bool,
+                 "candidates_list": [{"id":..,"name":..,"phone":..,"stage":..,"created_at":..,"job_location":..}],
+                 "job_locations": ["Mumbai","Pune", ...]  # distinct locations from linked jobs (if any)
+                },
                 ...
             ],
             "franchise": [...],
@@ -158,100 +154,87 @@ async def get_open_positions(date_clause=None):
     ACTIVE_STAGES = [
         "new_lead", "qualified", "hr_interview", "manager_interview", "hold",
     ]
+    UNASSIGNED = "Role not specified"
 
-    open_jobs = await db.jobs.find({"status": "open"}, {"_id": 0}).to_list(5000)
-
-    # Pre-fetch branches in one shot
-    branch_ids = list({j.get("branch_id") for j in open_jobs if j.get("branch_id")})
-    branch_map = {}
-    if branch_ids:
-        async for b in db.branches.find({"id": {"$in": branch_ids}}, {"_id": 0, "id": 1, "name": 1}):
-            branch_map[b["id"]] = b.get("name")
-
-    # Pre-fetch all leads linked to any open job in active stages (one query)
-    all_job_ids = [j["id"] for j in open_jobs]
-    lead_q = {
-        "job_id": {"$in": all_job_ids},
-        "deleted": {"$ne": True},
-        "current_stage": {"$in": ACTIVE_STAGES},
-    }
+    lead_q = {"deleted": {"$ne": True}, "current_stage": {"$in": ACTIVE_STAGES}}
     if date_clause:
         lead_q["created_at"] = date_clause
-    leads_by_job: dict[str, dict] = {jid: {s: 0 for s in ACTIVE_STAGES} for jid in all_job_ids}
-    leads_total_by_job: dict[str, int] = {jid: 0 for jid in all_job_ids}
-    async for ld in db.leads.find(lead_q, {"_id": 0, "job_id": 1, "current_stage": 1}):
-        jid = ld.get("job_id")
-        stg = ld.get("current_stage")
-        if jid in leads_by_job and stg in leads_by_job[jid]:
-            leads_by_job[jid][stg] += 1
-            leads_total_by_job[jid] += 1
 
-    # Bucket per (segment, role)
+    leads = await db.leads.find(
+        lead_q,
+        {"_id": 0, "id": 1, "name": 1, "phone": 1, "is_technician": 1,
+         "job_id": 1, "current_stage": 1, "created_at": 1},
+    ).to_list(20000)
+
+    # Enrich job info in one shot
+    job_ids = list({l.get("job_id") for l in leads if l.get("job_id")})
+    job_map = {}
+    if job_ids:
+        async for j in db.jobs.find(
+            {"id": {"$in": job_ids}},
+            {"_id": 0, "id": 1, "role": 1, "location": 1, "branch_id": 1, "department": 1, "created_at": 1},
+        ):
+            job_map[j["id"]] = j
+
     buckets: dict[tuple[str, str], dict] = {}
-    for j in open_jobs:
-        role = (j.get("role") or "").strip()
-        if not role:
-            continue
-        is_franchise = j.get("type") == "branch" or bool(j.get("branch_id"))
-        segment = "franchise" if is_franchise else "head_office"
-        key = (segment, role)
+    for l in leads:
+        seg = "franchise" if l.get("is_technician") else "head_office"
+        job = job_map.get(l.get("job_id")) if l.get("job_id") else None
+        role = ((job or {}).get("role") or "").strip() or UNASSIGNED
+        key = (seg, role)
         b = buckets.setdefault(key, {
-            "openings": 0,
-            "applicants": 0,
-            "stage_breakdown": {s: 0 for s in ACTIVE_STAGES},
-            "jobs": [],
-        })
-        sb = leads_by_job.get(j["id"], {s: 0 for s in ACTIVE_STAGES})
-        job_total = leads_total_by_job.get(j["id"], 0)
-        b["openings"] += 1
-        b["applicants"] += job_total
-        for s in ACTIVE_STAGES:
-            b["stage_breakdown"][s] += sb[s]
-        b["jobs"].append({
-            "id": j["id"],
             "role": role,
-            "location": j.get("location"),
-            "branch_id": j.get("branch_id"),
-            "branch_name": branch_map.get(j.get("branch_id")),
-            "department": j.get("department"),
-            "created_at": j.get("created_at"),
-            "deadline": j.get("deadline"),
-            "applicants": job_total,
-            "stage_breakdown": sb,
+            "candidates": 0,
+            "stage_breakdown": {s: 0 for s in ACTIVE_STAGES},
+            "candidates_list": [],
+            "job_locations_set": set(),
+            "is_unassigned": role == UNASSIGNED,
         })
+        b["candidates"] += 1
+        stg = l.get("current_stage")
+        if stg in b["stage_breakdown"]:
+            b["stage_breakdown"][stg] += 1
+        b["candidates_list"].append({
+            "id": l["id"],
+            "name": l.get("name"),
+            "phone": l.get("phone"),
+            "stage": stg,
+            "created_at": l.get("created_at"),
+            "job_location": (job or {}).get("location"),
+        })
+        if job and job.get("location"):
+            b["job_locations_set"].add(job["location"])
 
     result = {
         "head_office": [],
         "franchise": [],
         "summary": {
-            "head_office": {"openings": 0, "applicants": 0, "roles": 0},
-            "franchise":   {"openings": 0, "applicants": 0, "roles": 0},
-            "total":       {"openings": 0, "applicants": 0, "roles": 0},
+            "head_office": {"candidates": 0, "roles": 0},
+            "franchise":   {"candidates": 0, "roles": 0},
+            "total":       {"candidates": 0, "roles": 0},
         },
     }
-    for (segment, role), b in buckets.items():
-        # Sort jobs inside each role: most applicants first, then newest
-        b["jobs"].sort(key=lambda j: (-j["applicants"], j.get("created_at") or ""), reverse=False)
-        b["jobs"].sort(key=lambda j: -j["applicants"])
+    for (seg, role), b in buckets.items():
+        # Sort candidate list: newest first
+        b["candidates_list"].sort(key=lambda c: c.get("created_at") or "", reverse=True)
         row = {
-            "role": role,
-            "openings": b["openings"],
-            "applicants": b["applicants"],
+            "role": b["role"],
+            "candidates": b["candidates"],
             "stage_breakdown": b["stage_breakdown"],
-            "jobs": b["jobs"],
+            "candidates_list": b["candidates_list"],
+            "job_locations": sorted(b["job_locations_set"]),
+            "is_unassigned": b["is_unassigned"],
         }
-        result[segment].append(row)
-        result["summary"][segment]["openings"] += b["openings"]
-        result["summary"][segment]["applicants"] += b["applicants"]
-        result["summary"][segment]["roles"] += 1
+        result[seg].append(row)
+        result["summary"][seg]["candidates"] += b["candidates"]
+        result["summary"][seg]["roles"] += 1
 
-    for segment in ("head_office", "franchise"):
-        result[segment].sort(key=lambda r: (-r["openings"], -r["applicants"], r["role"].lower()))
-    result["summary"]["total"]["openings"] = (
-        result["summary"]["head_office"]["openings"] + result["summary"]["franchise"]["openings"]
-    )
-    result["summary"]["total"]["applicants"] = (
-        result["summary"]["head_office"]["applicants"] + result["summary"]["franchise"]["applicants"]
+    # Sort: unassigned last; otherwise most candidates first
+    for seg in ("head_office", "franchise"):
+        result[seg].sort(key=lambda r: (r["is_unassigned"], -r["candidates"], r["role"].lower()))
+
+    result["summary"]["total"]["candidates"] = (
+        result["summary"]["head_office"]["candidates"] + result["summary"]["franchise"]["candidates"]
     )
     result["summary"]["total"]["roles"] = (
         result["summary"]["head_office"]["roles"] + result["summary"]["franchise"]["roles"]
