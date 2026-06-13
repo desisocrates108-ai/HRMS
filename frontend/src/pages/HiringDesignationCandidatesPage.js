@@ -157,7 +157,7 @@ export default function HiringDesignationCandidatesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => nav(`/leads/${c.id}`)}
+                        onClick={() => nav(`/hirings/${segment || (designation.office_type === 'franchise' ? 'franchise' : 'head_office')}/designations/${designationId}/candidates/${c.id}`)}
                         data-testid={`view-candidate-${c.id}`}
                       >
                         <Eye className="w-4 h-4 mr-1" /> View

@@ -57,6 +57,12 @@ export default function HiringsPage() {
           <Badge className="bg-emerald-50 text-emerald-700 border-0">
             <span className="font-semibold mr-1">{summary.candidates}</span> total candidates
           </Badge>
+          <Badge className="bg-emerald-100 text-emerald-700 border-0">
+            🟢 <span className="font-semibold mx-1">{summary.open || 0}</span> open
+          </Badge>
+          <Badge className="bg-rose-100 text-rose-700 border-0">
+            🔴 <span className="font-semibold mx-1">{summary.closed || 0}</span> closed
+          </Badge>
         </div>
         {designations.length === 0 ? (
           <Card className="border-dashed border-slate-300 shadow-none">
@@ -72,14 +78,12 @@ export default function HiringsPage() {
             {designations.map((d) => (
               <Card
                 key={`${segmentKey}-${d.designation_id || d.name}`}
-                className={`border-slate-200 shadow-none cursor-pointer hover:-translate-y-0.5 hover:shadow-md transition-all ${d.designation_id ? '' : 'border-dashed'}`}
+                className={`border-slate-200 shadow-none transition-all ${d.designation_id ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md' : 'border-dashed opacity-90'}`}
                 onClick={() => {
                   if (d.designation_id) {
                     nav(`/hirings/${segmentKey}/designations/${d.designation_id}`);
                   } else {
-                    // Legacy ad-hoc — open with name-based path (segment leads filtered by role)
-                    const seg = segmentKey === 'franchise' ? '/leads/franchise' : '/leads/head-office';
-                    nav(`${seg}?job_role=${encodeURIComponent(d.name)}`);
+                    toast.message('No designation linked', { description: `Create a designation called "${d.name}" under ${segmentKey === 'franchise' ? 'Franchise' : 'Head Office'} to manage these candidates here.` });
                   }
                 }}
                 data-testid={`hiring-designation-card-${(d.designation_id || d.name.replace(/\s+/g, '-').toLowerCase())}`}
@@ -94,9 +98,16 @@ export default function HiringsPage() {
                       </div>
                       {d.department && <p className="text-xs text-slate-500 mt-0.5">{d.department}</p>}
                     </div>
-                    <div className="text-right shrink-0">
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge
+                        className={`text-[10px] border-0 font-semibold ${d.status === 'closed' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}
+                        data-testid={`hiring-status-${(d.designation_id || d.name.replace(/\s+/g, '-').toLowerCase())}`}
+                      >
+                        <span className="mr-1">{d.status === 'closed' ? '🔴' : '🟢'}</span>
+                        {d.status === 'closed' ? 'Closed' : 'Open'}
+                      </Badge>
                       <p className="text-2xl font-heading font-semibold text-blue-700 leading-none">{d.total}</p>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-1">Total</p>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400">Total</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 gap-1 mt-2">
@@ -112,7 +123,11 @@ export default function HiringsPage() {
                     ))}
                   </div>
                   <div className="flex items-center justify-end mt-3 text-xs text-blue-700">
-                    View candidates <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                    {d.designation_id ? (
+                      <>View candidates <ChevronRight className="w-3.5 h-3.5 ml-0.5" /></>
+                    ) : (
+                      <span className="text-slate-400 italic">Link a designation to view</span>
+                    )}
                   </div>
                 </CardContent>
               </Card>

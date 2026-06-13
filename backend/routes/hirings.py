@@ -45,6 +45,27 @@ def _empty_counts() -> dict:
     return {s["key"]: 0 for s in HIRING_STAGES}
 
 
+def _compute_status(counts: dict) -> str:
+    """Return 'open' or 'closed' for a designation card based on stage counts.
+
+    Closed: total > 0 AND no candidates remain in active stages
+            (new/qualified/hr_interview/manager_interview/hold). I.e., everyone has
+            moved to Selected/Joined/Rejected.
+    Otherwise: Open.
+
+    Per spec: "If all candidates have reached Selected OR Joined and there are no
+    candidates remaining in New/Qualified/Interview Scheduled/Interview Completed/Hold,
+    show 🔴 Closed." Rejected is treated as a terminal stage too (doesn't keep the
+    role open since hiring effort has concluded for that lead).
+    """
+    total = sum(counts.values())
+    if total == 0:
+        return "open"
+    active_keys = ("new_lead", "qualified", "hr_interview", "manager_interview", "hold")
+    active_count = sum(counts.get(k, 0) or 0 for k in active_keys)
+    return "closed" if active_count == 0 else "open"
+
+
 def _validate_office_type(value: str) -> str:
     v = (value or "").strip().lower()
     if v not in OFFICE_TYPES:
@@ -153,11 +174,16 @@ async def get_hiring_dashboard(office_type: str, current_user: dict = Depends(ge
     buckets = await _collect_designation_buckets(ot)
     # Order: real designations first (by total desc, then name), legacy/ad-hoc after
     rows = list(buckets.values())
+    # Compute hiring status per designation
+    for r in rows:
+        r["status"] = _compute_status(r["counts"])
     rows.sort(key=lambda r: (r["designation_id"] is None, -r["total"], r["name"].lower()))
     summary = {
         "designations": len(rows),
         "candidates": sum(r["total"] for r in rows),
         "stages": _empty_counts(),
+        "open": sum(1 for r in rows if r["status"] == "open"),
+        "closed": sum(1 for r in rows if r["status"] == "closed"),
     }
     for r in rows:
         for k, v in r["counts"].items():
@@ -200,4 +226,96 @@ async def list_candidates_by_designation(
     return {
         "designation": desg,
         "candidates": leads,
+    }
+
+
+
+@router.get("/candidates/{candidate_id}")
+async def get_candidate_profile(candidate_id: str, current_user: dict = Depends(get_current_user)):
+    """Full candidate profile for the Hirings module — bundles lead, designation,
+    assignee, stage history (with friendly labels), and call notes timeline.
+    """
+    lead = await db.leads.find_one({"id": candidate_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # Designation lookup
+    designation = None
+    if lead.get("designation_id"):
+        designation = await db.designations.find_one({"id": lead["designation_id"]}, {"_id": 0})
+    # Legacy fallback: try to match by job_role name
+    if not designation and lead.get("job_role"):
+        designation = await db.designations.find_one(
+            {"name_lower": (lead["job_role"] or "").strip().lower()},
+            {"_id": 0},
+        )
+    # Enrich job_role on lead
+    if not lead.get("job_role") and designation:
+        lead["job_role"] = designation.get("name")
+
+    # Assignee
+    assigned_to_user = None
+    if lead.get("assigned_to"):
+        u = await db.users.find_one({"id": lead["assigned_to"]}, {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1})
+        if u:
+            assigned_to_user = u
+
+    # Creator
+    created_by_user = None
+    if lead.get("created_by"):
+        u = await db.users.find_one({"id": lead["created_by"]}, {"_id": 0, "id": 1, "name": 1})
+        if u:
+            created_by_user = u
+
+    # Stage history -> timeline events (newest first)
+    stage_logs = await db.lead_stage_logs.find(
+        {"lead_id": candidate_id},
+        {"_id": 0},
+    ).sort("timestamp", -1).to_list(200)
+    # Call notes
+    call_logs = await db.call_logs.find(
+        {"lead_id": candidate_id},
+        {"_id": 0},
+    ).sort("call_date", -1).to_list(200)
+
+    timeline = []
+    for sl in stage_logs:
+        from_disp = STAGE_DISPLAY_MAP.get(sl.get("from_stage")) if sl.get("from_stage") else None
+        to_disp = STAGE_DISPLAY_MAP.get(sl.get("to_stage")) or sl.get("to_stage")
+        if not sl.get("from_stage"):
+            kind = "created"
+            title = "Lead Created"
+        else:
+            kind = "stage_change"
+            title = f"Stage changed: {from_disp or sl.get('from_stage')} → {to_disp}"
+        timeline.append({
+            "kind": kind,
+            "title": title,
+            "actor": sl.get("changed_by_name"),
+            "timestamp": sl.get("timestamp"),
+            "from_stage": sl.get("from_stage"),
+            "to_stage": sl.get("to_stage"),
+            "from_display": from_disp,
+            "to_display": to_disp,
+            "form_data": sl.get("form_data") or {},
+        })
+    for cl in call_logs:
+        timeline.append({
+            "kind": "call",
+            "title": "Call logged",
+            "actor": cl.get("called_by_name"),
+            "timestamp": cl.get("call_date") or cl.get("created_at"),
+            "notes": cl.get("notes"),
+        })
+    timeline.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
+
+    return {
+        "candidate": lead,
+        "designation": designation,
+        "assigned_to_user": assigned_to_user,
+        "created_by_user": created_by_user,
+        "stages": HIRING_STAGES,
+        "stage_display_map": STAGE_DISPLAY_MAP,
+        "current_stage_display": STAGE_DISPLAY_MAP.get(lead.get("current_stage")) or lead.get("current_stage"),
+        "timeline": timeline,
     }

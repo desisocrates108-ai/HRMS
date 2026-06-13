@@ -9,6 +9,7 @@ import BranchDetailPage from '@/pages/BranchDetailPage';
 import JobsPage from '@/pages/JobsPage';
 import HiringsPage from '@/pages/HiringsPage';
 import HiringDesignationCandidatesPage from '@/pages/HiringDesignationCandidatesPage';
+import HiringCandidateProfilePage from '@/pages/HiringCandidateProfilePage';
 import LeadsPipelinePage from '@/pages/LeadsPipelinePage';
 import LeadDetailPage from '@/pages/LeadDetailPage';
 import TaskManagerPage from '@/pages/TaskManagerPage';
@@ -63,6 +64,8 @@ function App() {
             <Route path="/jobs" element={<Navigate to="/hirings" replace />} />
             <Route path="/hirings" element={<HiringsPage />} />
             <Route path="/hirings/:segment/designations/:designationId" element={<HiringDesignationCandidatesPage />} />
+            <Route path="/hirings/:segment/designations/:designationId/candidates/:candidateId" element={<HiringCandidateProfilePage />} />
+            <Route path="/hirings/candidates/:candidateId" element={<HiringCandidateProfilePage />} />
             <Route path="/leads" element={<Navigate to="/leads/head-office" replace />} />
             <Route path="/leads/head-office" element={<LeadsPipelinePage pipelineMode="head_office" />} />
             <Route path="/leads/franchise" element={<LeadsPipelinePage pipelineMode="technician" />} />
