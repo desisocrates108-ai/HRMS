@@ -9,7 +9,7 @@ Routes:
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 from database import db
-from auth_utils import get_current_user
+from auth_utils import get_current_user, log_audit, CEO_HR_ROLES
 
 router = APIRouter()
 
@@ -48,22 +48,25 @@ def _empty_counts() -> dict:
 def _compute_status(counts: dict) -> str:
     """Return 'open' or 'closed' for a designation card based on stage counts.
 
-    Closed: total > 0 AND no candidates remain in active stages
-            (new/qualified/hr_interview/manager_interview/hold). I.e., everyone has
-            moved to Selected/Joined/Rejected.
-    Otherwise: Open.
-
-    Per spec: "If all candidates have reached Selected OR Joined and there are no
-    candidates remaining in New/Qualified/Interview Scheduled/Interview Completed/Hold,
-    show 🔴 Closed." Rejected is treated as a terminal stage too (doesn't keep the
-    role open since hiring effort has concluded for that lead).
+    New business rule (per HRMS spec):
+    - Default = "closed" (a newly created designation with no candidates is Closed).
+    - A designation becomes "open" only when there is at least one candidate in
+      any of the ACTIVE hiring pipeline stages:
+        new_lead, qualified, hr_interview, manager_interview, hold, joined, rejected
+    - "selected" is NOT considered an active stage: a designation with candidates
+      only in Selected (and all active stages = 0) is Closed.
     """
-    total = sum(counts.values())
-    if total == 0:
-        return "open"
-    active_keys = ("new_lead", "qualified", "hr_interview", "manager_interview", "hold")
+    active_keys = (
+        "new_lead",
+        "qualified",
+        "hr_interview",
+        "manager_interview",
+        "hold",
+        "joined",
+        "rejected",
+    )
     active_count = sum(counts.get(k, 0) or 0 for k in active_keys)
-    return "closed" if active_count == 0 else "open"
+    return "open" if active_count > 0 else "closed"
 
 
 def _validate_office_type(value: str) -> str:
@@ -319,3 +322,49 @@ async def get_candidate_profile(candidate_id: str, current_user: dict = Depends(
         "current_stage_display": STAGE_DISPLAY_MAP.get(lead.get("current_stage")) or lead.get("current_stage"),
         "timeline": timeline,
     }
+
+
+
+@router.delete("/candidates/{candidate_id}")
+async def delete_hiring_candidate(candidate_id: str, current_user: dict = Depends(get_current_user)):
+    """Permanently delete a hiring lead (candidate) from the database in one step.
+
+    Used by the Hirings module — per spec the user is shown a confirmation dialog
+    in the UI and choosing "Delete" permanently removes the lead (no soft-delete /
+    restore). All related artifacts (stage history, interviews, candidate-form
+    tokens & submissions, call logs) are also removed to keep counters consistent.
+
+    Permissions: CEO, HR, or the lead's assignee/creator.
+    Blocked when the lead is already linked to an employee record (already hired).
+    """
+    lead = await db.leads.find_one({"id": candidate_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    role = current_user.get("role")
+    is_owner = current_user["id"] in (lead.get("assigned_to"), lead.get("created_by"))
+    if role not in CEO_HR_ROLES and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this candidate")
+
+    # Block if already converted to an employee
+    emp_link = await db.employees.find_one({"lead_id": candidate_id}, {"_id": 0, "id": 1})
+    if emp_link:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete: this lead has already been converted to an employee record.",
+        )
+
+    # Remove the lead and all related artifacts so dashboard counters stay accurate
+    await db.leads.delete_one({"id": candidate_id})
+    await db.lead_stage_logs.delete_many({"lead_id": candidate_id})
+    await db.interviews.delete_many({"lead_id": candidate_id})
+    await db.candidate_form_tokens.delete_many({"lead_id": candidate_id})
+    await db.candidate_form_submissions.delete_many({"lead_id": candidate_id})
+    await db.call_logs.delete_many({"lead_id": candidate_id})
+
+    await log_audit(
+        current_user["id"], current_user["name"],
+        "hard_delete", "lead", candidate_id,
+        {"name": lead.get("name"), "phone": lead.get("phone"), "context": "hiring_module"},
+    )
+    return {"success": True, "candidate_id": candidate_id}

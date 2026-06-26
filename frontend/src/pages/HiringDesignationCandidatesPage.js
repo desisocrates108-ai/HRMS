@@ -5,7 +5,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, Eye, Briefcase, Phone, Mail } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ArrowLeft, Search, Eye, Briefcase, Phone, Mail, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STAGE_LABELS = {
@@ -44,6 +54,8 @@ export default function HiringDesignationCandidatesPage() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -59,6 +71,24 @@ export default function HiringDesignationCandidatesPage() {
   }, [designationId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await API.delete(`/hirings/candidates/${deleteTarget.id}`);
+      // Optimistically remove from UI so all counters refresh instantly
+      setCandidates((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+      toast.success('Lead deleted');
+      setDeleteTarget(null);
+      // Re-sync with server to keep header/stage counts authoritative
+      fetchData();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete lead');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">Loading...</div>;
   if (!designation) return <div className="p-6 text-slate-500">Designation not found.</div>;
@@ -154,14 +184,26 @@ export default function HiringDesignationCandidatesPage() {
                       </Badge>
                     </td>
                     <td className="p-3 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => nav(`/hirings/${segment || (designation.office_type === 'franchise' ? 'franchise' : 'head_office')}/designations/${designationId}/candidates/${c.id}`)}
-                        data-testid={`view-candidate-${c.id}`}
-                      >
-                        <Eye className="w-4 h-4 mr-1" /> View
-                      </Button>
+                      <div className="inline-flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => nav(`/hirings/${segment || (designation.office_type === 'franchise' ? 'franchise' : 'head_office')}/designations/${designationId}/candidates/${c.id}`)}
+                          data-testid={`view-candidate-${c.id}`}
+                        >
+                          <Eye className="w-4 h-4 mr-1" /> View
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: c.id, name: c.name }); }}
+                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                          data-testid={`delete-candidate-${c.id}`}
+                          title="Delete lead"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -170,6 +212,31 @@ export default function HiringDesignationCandidatesPage() {
           </div>
         </Card>
       )}
+
+      {/* Delete Lead Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent data-testid="delete-lead-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-600">Delete Lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete{deleteTarget?.name ? ` ${deleteTarget.name}` : ' this lead'}?
+              <br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} data-testid="cancel-delete-lead-btn">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleConfirmDelete(); }}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+              data-testid="confirm-delete-lead-btn"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

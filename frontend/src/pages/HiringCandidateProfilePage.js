@@ -5,8 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   ArrowLeft, User, Briefcase, IndianRupee, FileText, Download, Activity,
-  Phone, Mail, MapPin, Calendar, UserCheck, CheckCircle2, Circle, ChevronRight,
+  Phone, Mail, MapPin, Calendar, UserCheck, CheckCircle2, Circle, ChevronRight, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -63,6 +73,8 @@ export default function HiringCandidateProfilePage() {
   const nav = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -91,6 +103,20 @@ export default function HiringCandidateProfilePage() {
   const backTarget = designationId
     ? `/hirings/${segment || (c.is_technician ? 'franchise' : 'head_office')}/designations/${designationId}`
     : '/hirings';
+
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await API.delete(`/hirings/candidates/${c.id}`);
+      toast.success('Lead deleted');
+      setDeleteOpen(false);
+      nav(backTarget);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete lead');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Resume URL
   const resumeUrl = c.resume_url || c.resume_path || c.resume;
@@ -131,13 +157,23 @@ export default function HiringCandidateProfilePage() {
             </Badge>
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => nav(`/leads/${c.id}`)}
-          data-testid="open-full-pipeline"
-        >
-          Manage in Pipeline <ChevronRight className="w-4 h-4 ml-1" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setDeleteOpen(true)}
+            className="text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+            data-testid="delete-lead-btn"
+          >
+            <Trash2 className="w-4 h-4 mr-1" /> Delete Lead
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => nav(`/leads/${c.id}`)}
+            data-testid="open-full-pipeline"
+          >
+            Manage in Pipeline <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -290,6 +326,31 @@ export default function HiringCandidateProfilePage() {
           </Card>
         </div>
       </div>
+
+      {/* Delete Lead Confirmation Dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={(v) => { if (!deleting) setDeleteOpen(v); }}>
+        <AlertDialogContent data-testid="delete-lead-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-600">Delete Lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete{c?.name ? ` ${c.name}` : ' this lead'}?
+              <br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} data-testid="cancel-delete-lead-btn">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleConfirmDelete(); }}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+              data-testid="confirm-delete-lead-btn"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
